@@ -280,9 +280,15 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         recorder: HistoryRecorder = HistoryRecorder(store: nil)
     ) async -> FileOutcome {
         let started = Date()
+        // The live row carries the same `[2/5] talk.wav` prefix its closing
+        // line will, so a file keeps one identity from first frame to
+        // scrollback.
+        let position = "[\(index)/\(total)] \(input.lastPathComponent)"
+        let task = console.task("\(position) transcribing")
         do {
             let transcribed = try await runner.transcribe(file: input)
             let document = try cueAdjusted(transcribed)
+            await task.update(label: "\(position) writing")
             // Notes belong at normal verbosity: "--language was ignored" is not
             // a detail the run can afford to hide behind --verbose.
             for warning in document.warnings {
@@ -306,7 +312,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             let seconds = Date().timeIntervalSince(started)
             let elapsed = String(format: "%.1f s", seconds)
             let target = Self.progressTarget(for: destinations)
-            console.progress("[\(index)/\(total)] \(input.lastPathComponent) -> \(target) (\(provider.rawValue), \(elapsed))")
+            await task.finish(
+                line: "\(position) -> \(target) (\(provider.rawValue), \(elapsed))"
+            )
 
             if recorder.isEnabled {
                 var audioSeconds = document.duration
@@ -327,9 +335,14 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             }
             return FileOutcome(input: input, destinations: destinations, failure: nil)
         } catch let error as CLIError {
+            // The row goes away without a line of its own: failures are
+            // reported together in input order once the batch is done, which
+            // is what a piped run has always printed.
+            await task.fail()
             await record(error, file: input, provider: provider, started: started, recorder: recorder)
             return FileOutcome(input: input, destinations: [], failure: error)
         } catch {
+            await task.fail()
             let failure = CLIError.transcriptionFailed(file: input, reason: error.localizedDescription)
             await record(failure, file: input, provider: provider, started: started, recorder: recorder)
             return FileOutcome(input: input, destinations: [], failure: failure)

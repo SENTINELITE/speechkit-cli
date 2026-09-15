@@ -303,7 +303,12 @@ public struct Bench: AsyncParsableCommand, Sendable {
         recorder: HistoryRecorder = HistoryRecorder(store: nil)
     ) async -> BenchRow {
         let measureStarted = Date()
+        let position = "[\(current.rawValue) \(index)/\(total)] \(file.lastPathComponent)"
+        let task = console.task("\(position) transcribing")
         func failed(_ error: Error) async -> BenchRow {
+            // A failed file is a row in the table with a reason in it, not a
+            // line of its own, so the row simply leaves the live area.
+            await task.fail()
             let reason = Self.message(for: error)
             await recorder.record(
                 historyRecord(
@@ -326,7 +331,10 @@ public struct Bench: AsyncParsableCommand, Sendable {
         let clock = ContinuousClock()
         var samples: [Double] = []
         var transcript: TranscriptDocument?
-        for _ in 0..<repeatCount {
+        for pass in 0..<repeatCount {
+            if repeatCount > 1 {
+                await task.update(label: "\(position) transcribing \(pass + 1) of \(repeatCount)")
+            }
             let started = clock.now
             do {
                 let document = try await runner.transcribe(file: file)
@@ -339,6 +347,8 @@ public struct Bench: AsyncParsableCommand, Sendable {
         guard let document = transcript, let meanWall = samples.mean else {
             return await failed(CLIError.transcriptionFailed(file: file, reason: "the provider returned nothing."))
         }
+
+        await task.update(label: "\(position) writing")
 
         let plain: String
         do {
@@ -408,8 +418,8 @@ public struct Bench: AsyncParsableCommand, Sendable {
         )
 
         let factor = row.realtimeFactor.map { String(format: " (%.1fx)", $0) } ?? ""
-        console.progress(
-            String(
+        await task.finish(
+            line: String(
                 format: "[%@ %d/%d] %@ %.1f s%@",
                 current.rawValue,
                 index,

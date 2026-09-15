@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.0 — 2026-09-15
+
+Work in flight is drawn live on a terminal, and piped output is unchanged.
+
+- A single `ProgressRenderer` owns the bottom lines of standard error. Each
+  task in flight gets a row with a spinner, its label, and its elapsed time,
+  and a twenty-cell bar with a percentage once a fraction is known. Frames are
+  drawn at most twelve times a second, and only when something changed or a
+  quarter second has passed.
+- `transcribe` and `bench` draw one row per file, so `--jobs 3` shows three.
+  A file moves from `transcribing` to `writing`, and its row collapses into
+  the `[2/5] talk.wav -> talk.srt (grok, 14.2 s)` line it always printed,
+  written above the live area so scrollback reads exactly like a piped run.
+  `--repeat` counts its passes in the label.
+- VOZ model preparation is one row: `checking cached model files`,
+  `downloading 196 MB of 467 MB` with a bar, then `loading model` with the
+  elapsed time that first load needs. `keys check --live` draws one row per
+  provider being probed.
+- Rows are truncated to the terminal width, which is re-read on `SIGWINCH`, so
+  a narrow window never wraps a live line. Warnings, notes, and errors clear
+  the live area, print where it was, and let the next frame redraw underneath.
+- `Ctrl-C` clears the live area, restores the cursor, and exits 130.
+- Nothing changes when standard error is not a terminal, or under `--quiet`:
+  no escape sequence is written, and the same lines come out in the same
+  order. Upload percentages are not among the phases, because SpeechKit's
+  `URLSession` is internal to the package and there is no way to observe an
+  upload from outside it.
+
 ## 0.7.0 — 2026-09-15
 
 Every run is recorded locally, and `speechkit stats` and `speechkit history`

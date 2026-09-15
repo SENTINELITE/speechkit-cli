@@ -606,6 +606,29 @@ times.
 Transcripts go to standard output unless `--output` is passed. Progress,
 warnings, and errors always go to standard error, so the tool stays pipeable.
 
+## Progress output
+
+On a terminal, work in flight is drawn on the bottom lines of standard error:
+a spinner, what the task is doing, the elapsed time, and a bar with a
+percentage where the fraction is known, such as the VOZ model download. With
+`--jobs 3` there are three of those lines, one per file. A file that finishes
+collapses into the line it would have printed anyway:
+
+```
+[2/5] talk.wav -> talk.srt (grok, 14.2 s)
+⠹ [3/5] keynote.m4a transcribing 0:18
+⠹ [4/5] interview.wav writing 0:11
+```
+
+Piped or redirected, there is no live area at all and no escape sequence is
+written: a redirected run produces the same bytes it did before the renderer
+existed, which is the per-file line under `--verbose` and silence otherwise.
+`--quiet` suppresses the live area on a terminal too.
+
+`Ctrl-C` clears the live area, restores the cursor, and exits 130, so an
+interrupted run never leaves a hidden cursor behind. Resizing the terminal
+re-measures it and the lines are truncated to fit rather than wrapped.
+
 ## Shell completion
 
 ArgumentParser generates the script:

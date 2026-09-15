@@ -22,6 +22,13 @@ final class VozModelSession {
     /// The approximate first-run download, as it appears in messages.
     nonisolated static let downloadSize = "about 467 MB"
 
+    /// The approximate first-run download in megabytes.
+    ///
+    /// SpeechKit-Voz reports download progress as a fraction and publishes no
+    /// byte count, so the megabytes beside the bar are this pinned total scaled
+    /// by that fraction. It is the same number ``downloadSize`` names.
+    nonisolated static let downloadMegabytes = 467
+
     /// What `voz status` calls the cache when no directory was configured.
     ///
     /// SpeechKit-Voz resolves the location internally and publishes no
@@ -108,12 +115,8 @@ final class VozModelSession {
         let reporter = VozProgressReporter(console: console, reportsDownload: !cached)
         let states = Task { @MainActor in
             for await state in transcriber.stateUpdates {
-                reporter.report(state)
+                await reporter.report(state)
             }
-        }
-        defer {
-            states.cancel()
-            reporter.finish()
         }
 
         do {
@@ -123,8 +126,12 @@ final class VozModelSession {
                 try await transcriber.downloadIfNeeded()
             }
         } catch {
+            states.cancel()
+            await reporter.finish()
             throw CLIError.modelNotReady(provider: .voz, reason: Self.message(for: error))
         }
+        states.cancel()
+        await reporter.finish()
     }
 
     /// Returns the presentable text of a `VozError` or any other failure.
@@ -139,18 +146,18 @@ final class VozModelSession {
     }
 }
 
-/// Prints VOZ model preparation to standard error.
+/// Reports VOZ model preparation.
 ///
-/// On a terminal the line is rewritten in place, so a download does not scroll
-/// a hundred percentages past. Through a pipe the same run prints a handful of
-/// plain lines, one every ten percent, so a log stays readable.
+/// On a terminal the whole preparation is one live row: it names the phase,
+/// counts the elapsed seconds, and draws a bar for the download. Through a
+/// pipe the same run prints the handful of plain lines it always printed, one
+/// every ten percent, so a log stays readable and unchanged.
 @MainActor
 final class VozProgressReporter {
     private let console: Console
-    private let rewrites: Bool
     private let reportsDownload: Bool
+    private let task: ProgressTask?
     private var lastPrintedStep = -1
-    private var wroteLine = false
 
     /// Creates a reporter for a console.
     ///
@@ -162,13 +169,21 @@ final class VozProgressReporter {
     ///     fetch that never happened.
     init(console: Console, reportsDownload: Bool = true) {
         self.console = console
-        self.rewrites = console.isStandardErrorTTY
         self.reportsDownload = reportsDownload
+        // The console decides whether there is a live area to draw in. When
+        // there is not, the handle prints nothing and the plain lines below
+        // carry the run, exactly as they did before there was a renderer.
+        let handle = console.task("voz: checking cached model files")
+        self.task = handle.isLive ? handle : nil
     }
 
-    /// Prints one model state.
-    func report(_ state: VozModelState) {
+    /// Reports one model state.
+    func report(_ state: VozModelState) async {
         guard console.verbosity != .quiet else { return }
+        if let task {
+            await report(state, on: task)
+            return
+        }
         switch state {
         case .unprepared:
             return
@@ -178,7 +193,7 @@ final class VozProgressReporter {
         case .downloading(let progress):
             guard reportsDownload else { return }
             let percent = Int((min(max(progress, 0), 1) * 100).rounded())
-            write("downloading \(percent)%", step: rewrites ? percent : percent / 10)
+            write("downloading \(percent)%", step: percent / 10)
         case .loading:
             write(
                 "loading model (first load specialises for the Neural Engine and can take a few minutes)",
@@ -192,23 +207,47 @@ final class VozProgressReporter {
         }
     }
 
-    /// Closes a rewritten line so later output starts on its own row.
-    func finish() {
-        guard wroteLine, rewrites else { return }
-        Console.writeStandardError("\n")
-        wroteLine = false
+    /// Closes the live row.
+    ///
+    /// Nothing is printed in its place: preparation is a phase of the run, and
+    /// the lines that matter are the per-file ones that follow it. The plain
+    /// path has already written whole lines and needs no closing.
+    func finish() async {
+        await task?.finish()
     }
 
+    private func report(_ state: VozModelState, on task: ProgressTask) async {
+        switch state {
+        case .unprepared:
+            return
+        case .checkingCache:
+            await task.update(label: "voz: checking cached model files")
+        case .downloading(let progress):
+            guard reportsDownload else { return }
+            let fraction = min(max(progress, 0), 1)
+            let total = VozModelSession.downloadMegabytes
+            let done = Int((fraction * Double(total)).rounded())
+            await task.update(label: "voz: downloading \(done) MB of \(total) MB")
+            await task.update(fraction: fraction)
+        case .loading:
+            await task.update(fraction: nil)
+            await task.update(
+                label: "voz: loading model (first load specialises for the Neural Engine)"
+            )
+        case .ready:
+            await task.update(label: "voz: ready")
+        case .failed:
+            return
+        }
+    }
+
+    /// Prints one plain line, at most once per step.
+    ///
+    /// Only reached when there is no live area, so the line is whole and the
+    /// download reports one line every ten percent rather than every frame.
     private func write(_ message: String, step: Int) {
         guard step != lastPrintedStep else { return }
         lastPrintedStep = step
-        wroteLine = true
-        if rewrites {
-            // `\r` returns to the start of the line and `ESC[K` clears what the
-            // previous, longer message left behind.
-            Console.writeStandardError("\r\u{1B}[Kspeechkit: voz: " + message)
-        } else {
-            Console.writeStandardError("speechkit: voz: " + message + "\n")
-        }
+        Console.writeStandardError("speechkit: voz: " + message + "\n")
     }
 }

@@ -345,6 +345,11 @@ extension CredentialCheck {
     public static func liveProbe(clip: URL, console: Console = Console(verbosity: .quiet)) -> Probe {
         { provider, credential in
             let started = Date()
+            // One row per provider being probed. It closes without a line of
+            // its own: the table below is the report, and a piped run has
+            // never printed anything here.
+            let task = console.task("keys: checking \(provider.rawValue)")
+            defer { Task { await task.finish() } }
             let context = RunContext(
                 credential: credential,
                 allowsModelDownload: false,
