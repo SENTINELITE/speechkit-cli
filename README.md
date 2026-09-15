@@ -1,62 +1,292 @@
 # speechkit
 
-A macOS command-line tool that transcribes audio files with any
-[SpeechKit](../SpeechKit) provider and writes plain text or JSON. Subtitles
-(SRT, WebVTT) and the remaining providers arrive in later phases.
+A macOS command-line tool that transcribes one or more audio files with any
+[SpeechKit](../SpeechKit) file provider — ElevenLabs, Aqua, Cohere, Grok,
+OpenAI, Meta, Gemini, or Apple's on-device Speech framework — and writes plain
+text, JSON, SubRip, or WebVTT, with optional word-level timestamps and speaker
+labels. It is a thin front end over the SpeechKit package: every provider
+request goes through SpeechKit's detailed file-transcription calls, and the
+responses are mapped into one neutral `TranscriptDocument` that the formatters
+render. The package is a path dependency (`.package(path: "../SpeechKit")`), so
+this checkout and the SpeechKit checkout must sit side by side in the same
+parent directory and the tool always builds against whatever is on disk.
 
-This is phase 1: the command skeleton, `txt` and `json` output, and runners for
-Grok, OpenAI, and Apple's on-device Speech framework.
+## Requirements
 
-## Build
+- macOS 15 or later to run the tool.
+- macOS 26 or later for `--provider apple`. On macOS 15 the local speech
+  analyzer does not exist and `--provider apple` exits with code 3.
+- Xcode 26 or later (Swift 6.2 or later) to build.
+- A sibling SpeechKit checkout at `../SpeechKit`.
+
+## Build and install
 
 ```sh
 swift build -c release
-cp .build/release/speechkit /usr/local/bin/speechkit
+cp .build/release/speechkit ~/.local/bin/speechkit     # or /usr/local/bin
 ```
 
-The package depends on `../SpeechKit` by path, so both checkouts must sit side
-by side. Requires macOS 15; `--provider apple` requires macOS 26.
-
-## Usage
+Or use the install script, which builds for the native architecture and copies
+the binary into `$SPEECHKIT_INSTALL_DIR`, defaulting to `~/.local/bin`:
 
 ```sh
-# On-device transcription, JSON to stdout
-speechkit transcribe talk.wav --provider apple --format json --stdout
-
-# OpenAI with word timestamps, writing talk.json next to the input
-speechkit transcribe talk.m4a --provider openai --language en --words --format json
-
-# Grok, several files, text output into a directory
-speechkit transcribe *.wav --provider grok --format txt --output-dir ./transcripts
+Scripts/install.sh
+SPEECHKIT_INSTALL_DIR=/usr/local/bin Scripts/install.sh
 ```
 
-Run `speechkit transcribe --help` for every flag. Flags for later phases
-(`--format srt`, `--format vtt`, the remaining providers) are declared now and
-report that they are not implemented yet rather than failing obscurely.
+For a universal (arm64 + x86_64) binary in `dist/speechkit`:
+
+```sh
+Scripts/build-release.sh
+```
 
 ## Credentials
 
-Resolution order is `--api-key`, then the environment, then the macOS Keychain
-(phase 3):
+Every provider except Apple needs an API key. The tool looks in three places,
+in this order, and stops at the first one that holds a non-empty value:
+
+1. `--api-key <key>` on the command line.
+2. The `SPEECHKIT_<PROVIDER>_API_KEY` environment variable.
+3. The macOS login keychain, under service `com.sentinelite.speechkit-cli`
+   with the provider name as the account.
+
+If none of the three yields a key, the run exits with code 3 before any upload.
 
 | Provider | Environment variable |
 | --- | --- |
-| ElevenLabs | `SPEECHKIT_ELEVENLABS_API_KEY` |
-| Aqua | `SPEECHKIT_AQUA_API_KEY` |
-| Cohere | `SPEECHKIT_COHERE_API_KEY` |
-| Grok | `SPEECHKIT_GROK_API_KEY` |
-| OpenAI | `SPEECHKIT_OPENAI_API_KEY` |
-| Meta | `SPEECHKIT_META_API_KEY` |
-| Gemini | `SPEECHKIT_GEMINI_API_KEY` |
-| Apple | none; runs on device |
+| `elevenlabs` | `SPEECHKIT_ELEVENLABS_API_KEY` |
+| `aqua` | `SPEECHKIT_AQUA_API_KEY` |
+| `cohere` | `SPEECHKIT_COHERE_API_KEY` |
+| `grok` | `SPEECHKIT_GROK_API_KEY` |
+| `openai` | `SPEECHKIT_OPENAI_API_KEY` |
+| `meta` | `SPEECHKIT_META_API_KEY` |
+| `gemini` | `SPEECHKIT_GEMINI_API_KEY` |
+| `apple` | none; runs on device |
 
-`SPEECHKIT_PROVIDER` supplies the default for `--provider`.
+`SPEECHKIT_PROVIDER` supplies the default for `--provider`, so
+`export SPEECHKIT_PROVIDER=openai` lets you drop the flag entirely.
+
+The keychain is managed with `speechkit keys`:
+
+```sh
+speechkit keys set openai            # hidden prompt, no echo, nothing in shell history
+speechkit keys set openai --from-stdin < key.txt
+speechkit keys get openai            # sk-…4f2a
+speechkit keys get openai --reveal
+speechkit keys delete openai
+speechkit keys list                  # default subcommand; also plain `speechkit keys`
+```
+
+`keys set` warns when the matching environment variable is also set, because
+the variable wins over the keychain at transcription time. `apple` is rejected
+by `set`, `get`, and `delete` with "apple needs no key".
+
+Run `speechkit providers` to see, per provider, what it supports and whether a
+credential was found on this machine right now (`env`, `keychain`, `none`, or
+`not needed`). Add `--json` for machine-readable output.
+
+## Quick start
+
+```sh
+# Word-timed WebVTT from OpenAI
+speechkit transcribe interview.m4a --provider openai --language en --format vtt --words
+
+# Diarized SubRip for a directory of files, three uploads at a time
+speechkit transcribe *.wav --provider grok --format srt --diarize --output-dir ./subs --jobs 3
+
+# On-device transcription, JSON piped into jq
+speechkit transcribe talk.mp3 --provider apple --language en-US --format json --stdout | jq .segments
+
+# Discovery
+speechkit providers
+speechkit languages meta
+
+# Batch: text and subtitles for every file in a folder, skipping ones already done
+speechkit transcribe ./recordings/*.m4a \
+  --provider gemini --language en-US \
+  --format txt --format vtt \
+  --output-dir ./out --jobs 4 --verbose
+```
+
+Without `--output-dir`, `--output`, or `--stdout`, each transcript is written
+next to its input file as `<input stem>.<format>`. Existing files are skipped
+with a warning unless `--overwrite` is passed.
+
+## `speechkit transcribe` flags
+
+| Flag | Value | Default | Notes |
+| --- | --- | --- | --- |
+| `<files>` | one or more paths | — | Globs are expanded by the shell. A directory is rejected with a hint to use a glob. |
+| `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `apple` | `SPEECHKIT_PROVIDER` | Case-insensitive. Required when the variable is unset. |
+| `-l`, `--language` | language code | provider default | Repeatable. Only OpenAI and Gemini use more than the first value. |
+| `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. |
+| `--api-key` | string | — | Overrides the environment and keychain for this run. |
+| `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple. |
+| `--timeout` | seconds | 600 | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, and Apple. |
+| `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
+| `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs. |
+| `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. |
+| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, and Apple. |
+| `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
+| `-o`, `--output-dir` | directory | next to the input | Created if missing. |
+| `--output` | file path | — | One input file and one format only. |
+| `--stdout` | flag | off | One input file and one format only. Cannot be combined with `--output`. |
+| `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
+| `--cues` | `segments`, `words` | `segments` | `words` writes one cue per word in SRT and VTT. |
+| `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
+| `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
+| `-j`, `--jobs` | integer | `2` | Concurrent uploads. Values above 8 are capped with a warning. |
+| `--raw` | flag | off | Ask for the provider's raw response in JSON. Not yet available for any provider; it adds a warning instead. |
+| `-v`, `--verbose` | flag | off | Per-file progress, timing, and per-provider notes to stderr. |
+| `-q`, `--quiet` | flag | off | Suppress warnings and progress. Cannot be combined with `--verbose`. |
+
+`transcribe` is the default subcommand, so `speechkit talk.wav -p openai` works.
+
+Everything that can be checked without an upload is checked first: the provider
+supports the requested capabilities, the model and language are valid for the
+provider, the input exists and is readable, its extension is one the provider
+accepts, and its size is under the provider's limit. Anything wrong there exits
+with code 1 before a byte leaves the machine.
+
+## Providers
+
+`speechkit providers` prints the live version of this table, including the
+default model and where each credential was found.
+
+| Provider | Words | Segments | Diarize | Language input | Max upload | Extensions |
+| --- | --- | --- | --- | --- | --- | --- |
+| `elevenlabs` | yes | yes | no | none (auto-detected) | 3 GB | any |
+| `aqua` | no | no | no | fixed provider list | 25 MB | flac, m4a, mp3, mp4, mpeg, mpga, ogg, wav, webm |
+| `cohere` | no | no | no | fixed provider list | 25 MB | flac, mp3, mpeg, mpga, ogg, wav |
+| `grok` | yes | yes | yes | fixed provider list | 500 MB | aac, flac, m4a, mkv, mp3, mp4, ogg, opus, wav |
+| `openai` | yes | yes | yes | ISO 639-1 | 25 MB | m4a, mp3, mp4, mpeg, mpga, wav, webm |
+| `meta` | no | yes | yes | language names | 32 MB | wav |
+| `gemini` | yes | yes | yes | BCP-47 | no byte limit (one hour per file) | aac, aif, aiff, flac, m4a, mp3, mpeg, mpga, ogg, opus, wav, webm |
+| `apple` | yes | yes | no | `Locale` identifier | none | any |
+
+Aqua and Cohere return text only, so `--format srt` or `--format vtt` with
+either is a usage error rather than a wasted upload. Meta returns speaker
+turns but no word timings, so `--words` is rejected there too.
+
+Use `speechkit languages <provider>` for the accepted `--language` values.
+Grok, Aqua, Cohere, and Meta print a fixed list; OpenAI and Gemini accept any
+code, so they print a note instead; Apple prints the locales this machine's
+transcriber actually supports. Region subtags such as `-US` are dropped before
+matching against a fixed list, so `pt-BR` and `pt` resolve the same way.
+
+### Flags dropped per provider
+
+Flags that a provider cannot use are dropped rather than failing the run. The
+note appears on stderr only with `--verbose`, and in the `warnings` array of
+JSON output always.
+
+| Provider | Dropped |
+| --- | --- |
+| `elevenlabs` | `--language` (Scribe detects the language itself), `--timeout`, `--prompt`, `--keyword` |
+| `aqua` | `--timeout`, `--prompt`, `--keyword` |
+| `cohere` | `--timeout`, `--prompt`, `--keyword` |
+| `grok` | none |
+| `openai` | none |
+| `meta` | `--prompt` |
+| `gemini` | `--prompt`; `--keyword` is dropped when combined with `--diarize` or `--words`, which Gemini rejects |
+| `apple` | `--model`, `--endpoint`, `--timeout`, `--prompt` |
+
+Aqua, Cohere, and ElevenLabs also note that the transcript is a single untimed
+segment, and Grok, Gemini, and ElevenLabs note when the provider returned no
+word timings and the transcript collapsed to one untimed segment.
+
+## Output formats
+
+**txt** — the transcript text and a trailing newline. With `--diarize`, one
+paragraph per speaker turn, prefixed `A: `, `B: `, and so on, separated by a
+blank line.
+
+**json** — the `TranscriptDocument`: provider, model, source file, text,
+language, duration, segments, words, and warnings. Pretty-printed with sorted
+keys.
+
+**srt** — cues numbered from one, `00:00:01,520 --> 00:00:04,640` timings with a
+comma before the milliseconds, a blank line between cues, UTF-8 with LF endings
+and no byte order mark. With `--diarize`, cue text is prefixed `[A] `.
+
+**vtt** — a `WEBVTT` header followed by a `NOTE` block recording provider,
+model, and language, then cues with `.` before the milliseconds. With
+`--diarize`, cue text is a `<v A>` voice span. With `--words`, cues carry inline
+timing tags — `How <00:00:01.900>is <00:00:02.100>the` — which players use to
+highlight words as they are spoken; the first word of a cue carries no tag
+because the cue start already covers it.
+
+Cues are built from segments by default. `--cues words` writes one cue per word
+instead, for word-highlighting players; it needs word timings, so pass `--words`
+with it. Lines are wrapped on word boundaries at the `--max-cue-chars` limit.
+
+Subtitles are never guessed. If a transcript carries no timings, `srt` and `vtt`
+fail for that file with a message naming the provider rather than inventing cue
+times.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Every file succeeded |
-| 1 | Usage or configuration error before any work |
-| 2 | At least one file failed; the others were still written |
-| 3 | Credential missing, or the provider is unusable on this machine |
+| 0 | Every file succeeded. |
+| 1 | Usage or configuration error found before any work: bad flag combination, unsupported capability, invalid model or language, missing or unreadable input, unsupported extension, oversized file, existing output, or no timing data for a subtitle format. |
+| 2 | At least one file failed while others succeeded; the successful transcripts are still written and the failures are listed on stderr. |
+| 3 | No credential for the provider, `--provider apple` on macOS 15, or a keychain failure. |
+
+Transcripts go to standard output only with `--stdout`. Progress, warnings, and
+errors always go to standard error, so the tool stays pipeable.
+
+## Shell completion
+
+ArgumentParser generates the script:
+
+```sh
+mkdir -p ~/.zsh/completions
+speechkit --generate-completion-script zsh > ~/.zsh/completions/_speechkit
+```
+
+Make sure `~/.zsh/completions` is on `fpath` before `compinit` runs in
+`~/.zshrc`:
+
+```sh
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
+`bash` and `fish` are also accepted in place of `zsh`.
+
+## Tests
+
+```sh
+swift build -Xswiftc -warnings-as-errors
+swift test
+```
+
+The unit suite is hermetic: no network, no keychain writes outside a temporary
+in-memory store, and no media fixtures. Integration tests are disabled unless
+credentials are present, so a plain `swift test` skips them rather than failing.
+
+To enable them, export the key for each provider you want to exercise and run
+the suite again. Each enabled test synthesises a short WAV with `say` and
+`afconvert`, transcribes it, and checks the text:
+
+```sh
+export SPEECHKIT_OPENAI_API_KEY=sk-…
+export SPEECHKIT_GROK_API_KEY=xai-…
+swift test
+```
+
+The on-device Apple test needs no key, so it is gated on an explicit opt-in
+instead:
+
+```sh
+SPEECHKIT_INTEGRATION=1 swift test
+```
+
+## Status
+
+This is a local, unpublished tool. There is no GitHub remote, no CI, no
+Homebrew tap, and no tagged release; the SpeechKit dependency is a path
+dependency rather than a version, so both checkouts move together. Build it
+from source with the steps above. Realtime microphone transcription, directory
+watching, and a public release are follow-ups, not part of this version.
