@@ -530,7 +530,13 @@ public actor ProgressRenderer {
     }
 
     /// Clears the live area, restores the cursor, and exits 130.
+    ///
+    /// Interactive mode registers its raw-mode restoration with
+    /// ``TerminalRestoration`` rather than installing a second `SIGINT`
+    /// handler, so one interrupt path undoes both the live area and the
+    /// terminal settings, and the exit code stays 130 either way.
     func interrupt() {
+        TerminalRestoration.run()
         var frame = ""
         if cursorHidden {
             frame += Self.clearBelow + Self.showCursor

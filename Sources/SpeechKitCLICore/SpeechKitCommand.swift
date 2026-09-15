@@ -35,10 +35,10 @@ public struct SpeechKitCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "speechkit",
         abstract: "Transcribe audio files with any SpeechKit provider.",
-        version: "0.8.0",
+        version: "0.9.0",
         subcommands: [
             Transcribe.self, Bench.self, Stats.self, History.self,
-            Providers.self, Languages.self, Keys.self, Voz.self
+            Providers.self, Languages.self, Keys.self, Voz.self, Interactive.self
         ],
         defaultSubcommand: Transcribe.self
     )
@@ -46,13 +46,38 @@ public struct SpeechKitCommand: AsyncParsableCommand {
     /// Creates the root command.
     public init() {}
 
+    /// Whether a bare `speechkit` should open the interactive mode.
+    ///
+    /// The check happens before ArgumentParser sees anything, because
+    /// `transcribe` is the default subcommand and an empty argument list would
+    /// otherwise parse as a `transcribe` with no files. Every other case is
+    /// left exactly as it was, so `speechkit talk.wav -p voz` still transcribes
+    /// and a no-argument run off a terminal still prints the usage error.
+    ///
+    /// - Parameters:
+    ///   - arguments: The process arguments, without the executable name.
+    ///   - isTTY: Whether standard input and standard error are both terminals.
+    public static func wantsInteractive(arguments: [String], isTTY: Bool) -> Bool {
+        arguments.isEmpty && isTTY
+    }
+
     /// Parses the process arguments, runs the selected subcommand, and exits.
     ///
     /// This replaces `AsyncParsableCommand.main()` so the tool can use the exit
     /// codes documented in the README rather than ArgumentParser's defaults.
     public static func runMain() async -> Never {
         do {
-            var command = try parseAsRoot()
+            var command: any ParsableCommand
+            if wantsInteractive(
+                arguments: Array(CommandLine.arguments.dropFirst()),
+                isTTY: Terminal.isInteractive()
+            ) {
+                // Parsed rather than constructed: an `@OptionGroup` only has
+                // a value once ArgumentParser has filled it in.
+                command = try Interactive.parse([])
+            } else {
+                command = try parseAsRoot()
+            }
             if var asyncCommand = command as? AsyncParsableCommand {
                 try await asyncCommand.run()
             } else {

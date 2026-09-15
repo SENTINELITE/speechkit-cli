@@ -35,6 +35,12 @@ public struct HistoryRecord: Codable, Sendable, Equatable {
     public var chars: Int
     /// The formats written, as `--format` values.
     public var formats: [String]
+    /// The `--output` directory, when the run wrote into one.
+    ///
+    /// Absent for a transcript that went to standard output or to a single
+    /// named file, which is what lets the interactive mode offer the last
+    /// directory anyone actually chose.
+    public var outputDirectory: String?
     /// Whether word timings were asked for.
     public var wantsWords: Bool
     /// Whether speaker labels were asked for.
@@ -61,6 +67,7 @@ public struct HistoryRecord: Codable, Sendable, Equatable {
         case words
         case chars
         case formats
+        case outputDirectory
         case wantsWords
         case wantsDiarization
         case repeatCount = "repeat"
@@ -88,6 +95,7 @@ public struct HistoryRecord: Codable, Sendable, Equatable {
         words: Int = 0,
         chars: Int = 0,
         formats: [String] = [],
+        outputDirectory: String? = nil,
         wantsWords: Bool = false,
         wantsDiarization: Bool = false,
         repeatCount: Int? = nil,
@@ -114,6 +122,7 @@ public struct HistoryRecord: Codable, Sendable, Equatable {
         self.words = words
         self.chars = chars
         self.formats = formats
+        self.outputDirectory = outputDirectory
         self.wantsWords = wantsWords
         self.wantsDiarization = wantsDiarization
         self.repeatCount = repeatCount

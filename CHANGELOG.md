@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.0 — 2026-09-15
+
+`speechkit` with no arguments on a terminal now walks through a run with arrow
+keys, and prints the headless command it assembled before running it.
+
+- A bare `speechkit` routes to the new `interactive` command when standard
+  input and standard error are both terminals. `speechkit interactive` and
+  `speechkit ui` force it, and say what to run instead when there is no
+  terminal. With any argument at all, and off a terminal, nothing changed:
+  `transcribe` is still the default subcommand and a no-argument run in a
+  script still prints the same usage error.
+- The transcribe flow asks for the provider, the files, the formats, word
+  timestamps, speaker labels, and the output destination, in that order, and
+  skips the questions the chosen provider cannot answer. Providers are listed
+  with their status: `on device, ready`, `on device, model not downloaded`,
+  `key: keychain`, `key: env`, or `no key`. The file step lists the audio files
+  in the current directory, with a path prompt behind an `Enter a path…` row
+  that completes with tab and expands globs. `stdout` is offered only for one
+  file in one format.
+- Before anything runs, the assembled command is printed as it could be pasted
+  into a shell, with paths quoted, and can be copied with `pbcopy`. Choosing to
+  run it parses that same command line and runs it, so validation, output,
+  progress, usage history, and exit codes are the headless ones. There is no
+  second implementation of a run.
+- Provider, formats, and output directory are prefilled from the last
+  successful `transcribe` in the usage history. A machine with no history is
+  offered VOZ when its model is downloaded, Apple on macOS 26, and otherwise
+  the first provider with a key. `transcribe` now records the `--output`
+  directory it wrote into, which is the field that default reads.
+- A provider with no key drops into a hidden key prompt that writes to the
+  keychain through the same code as `keys set`, and comes back. VOZ asks before
+  downloading its model. The first question also offers key management and VOZ
+  preparation on their own.
+- The bench flow collects providers (including `all`), files, formats, an
+  optional reference directory, a repeat count, and an output directory.
+- Escape steps back one question, and escape at the first one leaves. `Ctrl-C`
+  and `Ctrl-D` restore the terminal and exit 130, coordinated with the progress
+  renderer's interrupt handling so the raw mode and the live area are both
+  undone once. Prompts draw on standard error only.
+
 ## 0.8.0 — 2026-09-15
 
 Work in flight is drawn live on a terminal, and piped output is unchanged.

@@ -171,6 +171,79 @@ spells the skip out as `talk.txt (exists, skipped)`. Two inputs that share a
 stem, such as `talk.wav` and `talk.mp3` in one run, would write over each other
 in a directory, so the run is refused before any upload.
 
+## Interactive mode
+
+Run `speechkit` with no arguments on a terminal and it walks through the run
+with arrow keys instead of flags. `speechkit interactive`, or its alias
+`speechkit ui`, forces it; off a terminal that prints an error naming the
+headless form instead. Nothing else changes: a bare `speechkit` in a script,
+with standard input redirected, prints the usage error it always has, and
+`speechkit talk.wav -p voz` still transcribes, because the routing happens only
+when there are no arguments at all and both standard input and standard error
+are terminals.
+
+The prompts scroll like `npm init` rather than taking over the screen. Each one
+clears itself when answered and leaves a single line behind, so the scrollback
+reads like a filled-in form:
+
+```
+? What do you want to do?  Transcribe files
+? Provider  voz
+? Files  talk.wav
+? Formats  txt
+? Word timestamps?  No
+? Output  next to the inputs
+
+  speechkit transcribe talk.wav -p voz -f txt -o ./
+
+? Run it?  Yes
+[1/1] talk.wav -> talk.txt (voz, 0.1 s)
+```
+
+The flow is: what to do, then for a transcription the provider, the files, the
+formats, word timestamps, speaker labels, and where the output goes. The
+provider list carries its own status — `on device, ready`, `on device, model
+not downloaded`, `key: keychain`, `key: env`, or `no key` — so there is no
+guessing about what will work. Questions a provider cannot answer are not
+asked: VOZ is never asked about speaker labels, because it has none. The file
+step lists the audio files in the current directory when there are any, with a
+row at the end that opens a path prompt where tab completes against the file
+system and a glob such as `*.wav` is expanded here, since there is no shell to
+expand it. `stdout` is offered only for one file in one format, which is the
+same rule `transcribe` enforces.
+
+The last thing before anything runs is the command itself, printed exactly as
+it could be pasted into a script, with any path that needs it quoted.
+`Copy command` puts it on the clipboard with `pbcopy`, and `Back` returns to
+the previous question. Choosing `Yes` parses that command line and runs it, so
+validation, the progress rows, the output files, the usage history, and the
+exit codes are the headless ones; interactive mode has no run path of its own,
+and history records the run under `transcribe` or `bench` exactly as if it had
+been typed.
+
+The first three questions are prefilled from the [usage
+history](#usage-history): the provider, the formats, and the output directory
+of the most recent successful `transcribe`. With no history at all, the offer
+is VOZ when its model is downloaded, Apple on macOS 26, and otherwise the first
+provider that has a key.
+
+Choosing a provider with no key drops into the key prompt for it — the same
+keychain write `speechkit keys set` performs, with the key hidden as it is
+typed — and comes back. Choosing VOZ when the model is not downloaded asks
+before fetching it. The other two entries from the first question set a key for
+any provider, and download the VOZ model with the progress bar `voz prepare`
+draws.
+
+`Benchmark providers` collects the providers (with `all`), the files, the
+formats, an optional reference transcript directory, a repeat count, and the
+output directory, and then shows and runs the `speechkit bench` command those
+answers make.
+
+Escape steps back one question, and escape at the first question leaves.
+`Ctrl-C` and `Ctrl-D` restore the terminal and exit 130. Prompts are drawn on
+standard error and never on standard output, so a transcript sent to `stdout`
+from a session started this way pipes as cleanly as any other.
+
 ## `speechkit transcribe` flags
 
 | Flag | Value | Default | Notes |

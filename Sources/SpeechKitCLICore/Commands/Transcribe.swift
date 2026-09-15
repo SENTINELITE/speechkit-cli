@@ -397,11 +397,21 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             words: words,
             chars: chars,
             formats: outputOptions.resolvedFormats.map(\.rawValue),
+            outputDirectory: Self.outputDirectory(of: outputOptions.target),
             wantsWords: transcription.words,
             wantsDiarization: transcription.diarize,
             status: status,
             errorMessage: errorMessage
         )
+    }
+
+    /// Returns the recorded `--output` directory, when the run wrote into one.
+    ///
+    /// Standard output and a single named file have no directory to remember,
+    /// so neither is recorded and neither is offered as a default later.
+    static func outputDirectory(of target: OutputTarget) -> String? {
+        guard case .directory(let url) = target else { return nil }
+        return url.standardizedFileURL.path
     }
 
     /// Returns the size of a file in bytes, or `nil` when it cannot be read.
