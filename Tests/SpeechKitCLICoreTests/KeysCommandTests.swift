@@ -98,6 +98,29 @@ struct KeysCommandTests {
         #expect(try Keys.parseAsRoot([]) is Keys.List)
     }
 
+    @Test("keys check parses with and without providers and flags")
+    func checkParsing() throws {
+        let bare = try Keys.parseAsRoot(["check"]) as? Keys.Check
+        #expect(bare?.providers == [])
+        #expect(bare?.live == false)
+        #expect(bare?.json == false)
+
+        let full = try Keys.parseAsRoot(["check", "openai", "grok", "--live", "--json"]) as? Keys.Check
+        #expect(full?.providers == ["openai", "grok"])
+        #expect(full?.live == true)
+        #expect(full?.json == true)
+
+        let everything = try Keys.parseAsRoot(["check", "all"]) as? Keys.Check
+        #expect(everything?.providers == ["all"])
+    }
+
+    @Test("keys help mentions check")
+    func helpMentionsCheck() {
+        #expect(Keys.configuration.abstract.contains("check"))
+        #expect(Keys.configuration.discussion.contains("keys check"))
+        #expect(Keys.configuration.subcommands.contains { $0 == Keys.Check.self })
+    }
+
     @Test("keys rejects an unknown provider")
     func parsingRejectsUnknownProvider() {
         #expect(throws: (any Error).self) {

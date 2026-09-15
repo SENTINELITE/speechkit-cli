@@ -7,8 +7,13 @@ public struct Keys: ParsableCommand {
     /// The command configuration.
     public static let configuration = CommandConfiguration(
         commandName: "keys",
-        abstract: "Store provider API keys in the macOS keychain.",
-        subcommands: [Set.self, Get.self, Delete.self, List.self],
+        abstract: "Store provider API keys in the macOS keychain, and check them with 'keys check'.",
+        discussion: """
+        'keys set', 'keys get', 'keys delete', and 'keys list' manage stored keys. \
+        'keys check' reports where every provider's key comes from, and with --live \
+        verifies each one by transcribing a short generated clip.
+        """,
+        subcommands: [Set.self, Get.self, Delete.self, List.self, Check.self],
         defaultSubcommand: List.self
     )
 
@@ -114,6 +119,70 @@ public struct Keys: ParsableCommand {
         /// Runs the command.
         public func run() throws {
             FileHandle.standardOutput.write(Data(try KeysRunner(console: globals.console).list().utf8))
+        }
+    }
+
+    /// Reports where each provider's key comes from, and optionally whether it works.
+    public struct Check: AsyncParsableCommand {
+        /// The command configuration.
+        public static let configuration = CommandConfiguration(
+            commandName: "check",
+            abstract: "Check that every provider has a key, and with --live that the key works.",
+            discussion: """
+            With no arguments every provider is checked. Name providers to narrow it, \
+            or pass 'all' for the default. Exit code 0 means every requested provider \
+            is usable, 2 means a live check failed, and 3 means a key is missing.
+            """
+        )
+
+        /// The providers to check, or `all`.
+        @Argument(help: "Providers to check: \(CLIProvider.allValueStrings.joined(separator: ", ")), all.")
+        public var providers: [String] = []
+
+        /// Transcribes a short generated clip with each provider.
+        @Flag(name: .long, help: "Verify each key by transcribing a short generated clip.")
+        public var live: Bool = false
+
+        /// Emits an array of objects instead of a table.
+        @Flag(name: .long, help: "Emit JSON instead of a table.")
+        public var json: Bool = false
+
+        /// Global verbosity flags.
+        @OptionGroup public var globals: GlobalOptions
+
+        /// Creates an empty command.
+        public init() {}
+
+        /// Runs the command.
+        public func run() async throws {
+            let console = globals.console
+            let selected = try CredentialCheck.providers(named: providers)
+            let check = CredentialCheck()
+
+            let rows: [CredentialCheckRow]
+            if live {
+                let clip = try ProbeAudio.make()
+                defer { clip.remove() }
+                rows = await check.liveRows(
+                    for: selected,
+                    probe: CredentialCheck.liveProbe(clip: clip.url, console: console)
+                )
+            } else {
+                rows = check.rows(for: selected)
+            }
+
+            let text = json ? try CredentialCheck.json(rows) : CredentialCheck.table(rows, live: live)
+            FileHandle.standardOutput.write(Data(text.utf8))
+
+            if let summary = CredentialCheck.summary(rows) {
+                console.note(summary)
+            }
+            if live, let failures = CredentialCheck.failureSummary(rows) {
+                console.note(failures)
+            }
+
+            let code = CredentialCheck.exitCode(rows)
+            if code != 0 { throw ExitCode(code) }
         }
     }
 }
