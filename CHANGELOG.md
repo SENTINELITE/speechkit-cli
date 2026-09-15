@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.7.0 — 2026-09-15
+
+Every run is recorded locally, and `speechkit stats` and `speechkit history`
+report on them.
+
+- `transcribe`, `bench`, and `keys check --live` append one JSON Lines record
+  per file per provider to `~/Library/Application Support/speechkit/history.jsonl`.
+  The record carries the timestamp, CLI version, command, provider, model,
+  input name, path and size, audio seconds, wall seconds, realtime factor,
+  words, characters, formats written, the `--words`, `--diarize`, and
+  `--repeat` settings, and either `ok` or a short error class with the first
+  line of the failure. Transcript text, API keys, and reference transcripts are
+  never recorded.
+- The store is an actor over an append-only file, and each record is written as
+  one whole line, so a batch of concurrent uploads produces one intact line
+  each. The directory is created `0700` and the file `0600`. A line that cannot
+  be read is skipped with a single warning, and recording can never fail a run:
+  a store that cannot be written is a `--verbose` note and nothing more.
+- `speechkit stats` prints audio transcribed, wall time, realtime factor,
+  words, the most used commands and providers, and the fastest and slowest
+  provider. `--since` takes `24h`, `7d`, `30d`, or a date; `--by provider`,
+  `--by command`, and `--by day` group the rows; `--json` emits the totals and
+  every grouping as one object. An empty history prints one line and exits 0.
+- Realtime factors are computed from the totals, never averaged over the rows,
+  so a two-second clip cannot outweigh a two-hour recording.
+- `speechkit history` lists the runs themselves, newest first, with `--limit`,
+  `--provider`, `--failed`, `--since`, and `--json`. `speechkit history clear`
+  deletes the file after a confirmation, and requires `--yes` when standard
+  input is not a terminal.
+- `--no-history` on `transcribe`, `bench`, and `keys check`, and
+  `SPEECHKIT_NO_HISTORY` set to anything non-empty, record nothing at all:
+  neither the file nor its directory is created. `SPEECHKIT_HISTORY_DIR` moves
+  the history somewhere else.
+
 ## 0.6.0 — 2026-09-15
 
 `speechkit bench` compares providers over the same audio, and `speechkit keys

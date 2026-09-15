@@ -129,6 +129,9 @@ openai    env     SPEECHKIT_OPENAI_API_KEY  ••••1234  failed  0.3   open
 live check failed, and `3` when any requested provider has no key. Run it
 before a `bench` to know which providers will take part.
 
+Each provider that is actually probed is recorded in the [usage
+history](#usage-history); `--no-history` turns that off.
+
 ## Quick start
 
 ```sh
@@ -147,6 +150,9 @@ speechkit bench ./recordings/ -p voz -p apple -p openai -o ./bench/ --reference-
 # Discovery
 speechkit providers
 speechkit languages meta
+
+# What has this machine transcribed?
+speechkit stats --by provider --since 30d
 
 # Batch: text and subtitles for every file in a folder, skipping ones already done
 speechkit transcribe ./recordings/*.m4a \
@@ -188,6 +194,7 @@ in a directory, so the run is refused before any upload.
 | `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
 | `--no-download` | flag | off | Fail with exit 3 instead of downloading a missing on-device model. VOZ only. |
 | `-j`, `--jobs` | integer | `2` | Concurrent uploads. Values above 8 are capped with a warning. |
+| `--no-history` | flag | off | Do not record this run in the local usage history. `SPEECHKIT_NO_HISTORY` does the same for every run. |
 | `-v`, `--verbose` | flag | off | Per-file progress and timing to stderr. Per-provider notes print without it. |
 | `-q`, `--quiet` | flag | off | Suppress warnings and progress. Cannot be combined with `--verbose`. |
 
@@ -352,6 +359,7 @@ only.
 | `-j`, `--jobs` | integer | `1` | Files in flight per provider, capped at 8. One, for fair timing. |
 | `--no-download` | flag | off | Fail instead of downloading a missing on-device model. |
 | `--overwrite` | flag | off | Replace existing transcript files. Summaries are always rewritten. |
+| `--no-history` | flag | off | Do not record these runs in the local usage history. |
 | `-v`, `--verbose` | flag | off | Per-file progress to stderr whether or not it is a terminal. |
 | `-q`, `--quiet` | flag | off | Suppress warnings, progress, and the aggregate table. |
 
@@ -360,6 +368,85 @@ an extension it does not accept — is a failed row rather than a failed run,
 because Aqua's 25 MB limit should not abort the Gemini pass over the same
 folder. So is a `--model`-less provider that cannot serve `--words` or
 `--diarize`. The run exits with code 2 when any row failed.
+
+## Usage history
+
+Every `transcribe` run, every `bench` row, and every provider `keys check
+--live` actually probes is appended to
+`~/Library/Application Support/speechkit/history.jsonl`, one JSON object per
+line, so `speechkit stats` can answer how much audio went through which
+provider and how fast.
+
+Recorded: the timestamp, the CLI version, the command, the provider and model,
+the input file name and path, its size, the audio duration, the wall time of
+the run, the realtime factor, the word and character counts, the formats
+written, whether `--words` and `--diarize` were asked for, the `--repeat` count
+for `bench`, and either `ok` or a short error class (`credential`, `provider`,
+`validation`, `write`) with the first line of the failure.
+
+Never recorded: transcript text, API keys, reference transcripts, and word
+error rates. The history file is not a second copy of anyone's audio content.
+The directory is created `0700` and the file `0600`.
+
+Pass `--no-history` to `transcribe`, `bench`, or `keys check` to record
+nothing for that run, or set `SPEECHKIT_NO_HISTORY` to anything non-empty to
+record nothing at all. When recording is off, nothing is written and nothing is
+created. `SPEECHKIT_HISTORY_DIR` moves the file somewhere else.
+
+```console
+$ speechkit stats
+Since 2026-09-15 (1 day), 6 runs, 3 files, 0 failures
+Audio transcribed     23.2 s
+Wall time             1.3 s
+Realtime factor       17.4x
+Words                 60
+Most used commands    transcribe 4, keys check 2
+Most used providers   apple 3, voz 3
+Fastest provider      apple 18.4x   Slowest  voz 16.5x
+```
+
+Realtime factors are always total audio divided by total wall time, never an
+average of the per-run factors: averaging would weigh a two-second clip the
+same as a two-hour recording.
+
+`--since` takes `24h`, `7d`, `30d`, or a date such as `2026-09-01`. `--by`
+groups the rows:
+
+```console
+$ speechkit stats --by provider
+PROVIDER  RUNS  FILES  AUDIO   WALL   REALTIME  WORDS  FAILURES
+apple     3     3      11.5 s  0.6 s  18.4x     30     0
+voz       3     3      11.7 s  0.7 s  16.5x     30     0
+
+$ speechkit stats --by command
+COMMAND     RUNS  FILES  WALL   FAILURES
+transcribe  4     2      0.6 s  0
+keys check  2     1      0.7 s  0
+
+$ speechkit stats --by day --since 30d
+DAY         RUNS  FILES  AUDIO   WALL   REALTIME  WORDS
+2026-09-15  6     3      23.2 s  1.3 s  17.4x     60
+```
+
+`speechkit history` lists the runs themselves, newest first, 20 by default:
+
+```console
+$ speechkit history --limit 3
+WHEN              COMMAND     PROVIDER  FILE       AUDIO  WALL   REALTIME  WORDS  STATUS
+2026-09-15 15:17  keys check  voz       probe.wav  1.5 s  0.5 s  2.9x      0      ok
+2026-09-15 15:17  keys check  apple     probe.wav  1.5 s  0.2 s  7.7x      0      ok
+2026-09-15 15:17  transcribe  voz       b.wav      5.1 s  0.1 s  61.5x     15     ok
+```
+
+`--provider`, `--failed`, and `--since` narrow it, and `--json` emits the
+records themselves. `speechkit stats --json` emits the totals and every
+grouping as one object.
+
+`speechkit history clear` deletes the file after a confirmation; `--yes` skips
+it, and off a terminal `--yes` is required. `stats` on an empty or missing
+history prints `No history yet. Runs are recorded after the first
+transcription.` and exits 0. A line that cannot be read is skipped with one
+warning rather than failing the command.
 
 ## Providers
 
@@ -546,8 +633,10 @@ swift test
 ```
 
 The unit suite is hermetic: no network, no keychain writes outside a temporary
-in-memory store, and no media fixtures. Integration tests are disabled unless
-credentials are present, so a plain `swift test` skips them rather than failing.
+in-memory store, no media fixtures, and no writes to the machine's own usage
+history, which the tests redirect with `SPEECHKIT_HISTORY_DIR` or opt out of
+with `--no-history`. Integration tests are disabled unless credentials are
+present, so a plain `swift test` skips them rather than failing.
 
 To enable them, export the key for each provider you want to exercise and run
 the suite again. Each enabled test synthesises a short WAV with `say` and

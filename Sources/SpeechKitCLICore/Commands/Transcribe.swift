@@ -43,6 +43,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     /// Global verbosity flags.
     @OptionGroup public var globals: GlobalOptions
 
+    /// The usage history opt-out.
+    @OptionGroup public var history: HistoryOptions
+
     /// Creates an empty command.
     public init() {}
 
@@ -156,6 +159,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             console: console
         )
 
+        let recorder = HistoryRecorder(noHistory: history.noHistory, console: console)
         let outcomes = await BatchRunner(jobs: jobs, console: console).run(inputs: inputs) { input, index, total in
             await run(
                 file: input,
@@ -164,7 +168,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
                 provider: provider,
                 runner: runner,
                 writer: writer,
-                console: console
+                console: console,
+                recorder: recorder
             )
         }
 
@@ -261,7 +266,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
 
     /// Transcribes one file and writes every requested format.
     ///
-    /// Phase 3 calls this from a task group, so it never throws.
+    /// Phase 3 calls this from a task group, so it never throws. Both the
+    /// success and the failure are recorded in the usage history, which never
+    /// fails the run either.
     func run(
         file input: URL,
         index: Int,
@@ -269,7 +276,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         provider: CLIProvider,
         runner: any ProviderRunner,
         writer: OutputWriter,
-        console: Console
+        console: Console,
+        recorder: HistoryRecorder = HistoryRecorder(store: nil)
     ) async -> FileOutcome {
         let started = Date()
         do {
@@ -295,19 +303,97 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
                 )
             }
 
-            let elapsed = String(format: "%.1f s", Date().timeIntervalSince(started))
+            let seconds = Date().timeIntervalSince(started)
+            let elapsed = String(format: "%.1f s", seconds)
             let target = Self.progressTarget(for: destinations)
             console.progress("[\(index)/\(total)] \(input.lastPathComponent) -> \(target) (\(provider.rawValue), \(elapsed))")
+
+            if recorder.isEnabled {
+                var audioSeconds = document.duration
+                if audioSeconds == nil { audioSeconds = await AudioDuration.seconds(of: input) }
+                await recorder.record(
+                    historyRecord(
+                        file: input,
+                        provider: provider,
+                        model: document.model,
+                        audioSeconds: audioSeconds,
+                        wallSeconds: seconds,
+                        words: WordErrorRate.words(in: document.text).count,
+                        chars: document.text.count,
+                        status: HistoryStatus.ok,
+                        errorMessage: nil
+                    )
+                )
+            }
             return FileOutcome(input: input, destinations: destinations, failure: nil)
         } catch let error as CLIError {
+            await record(error, file: input, provider: provider, started: started, recorder: recorder)
             return FileOutcome(input: input, destinations: [], failure: error)
         } catch {
-            return FileOutcome(
-                input: input,
-                destinations: [],
-                failure: .transcriptionFailed(file: input, reason: error.localizedDescription)
-            )
+            let failure = CLIError.transcriptionFailed(file: input, reason: error.localizedDescription)
+            await record(failure, file: input, provider: provider, started: started, recorder: recorder)
+            return FileOutcome(input: input, destinations: [], failure: failure)
         }
+    }
+
+    /// Records one failed file.
+    private func record(
+        _ error: CLIError,
+        file input: URL,
+        provider: CLIProvider,
+        started: Date,
+        recorder: HistoryRecorder
+    ) async {
+        guard recorder.isEnabled else { return }
+        await recorder.record(
+            historyRecord(
+                file: input,
+                provider: provider,
+                model: transcription.model,
+                audioSeconds: nil,
+                wallSeconds: Date().timeIntervalSince(started),
+                words: 0,
+                chars: 0,
+                status: HistoryRecord.status(for: error),
+                errorMessage: HistoryRecord.errorMessage(error.localizedDescription)
+            )
+        )
+    }
+
+    /// Fills in the fields every `transcribe` record shares.
+    private func historyRecord(
+        file input: URL,
+        provider: CLIProvider,
+        model: String?,
+        audioSeconds: Double?,
+        wallSeconds: Double,
+        words: Int,
+        chars: Int,
+        status: String,
+        errorMessage: String?
+    ) -> HistoryRecord {
+        HistoryRecord(
+            command: "transcribe",
+            provider: provider.rawValue,
+            model: model,
+            fileName: input.lastPathComponent,
+            filePath: input.standardizedFileURL.path,
+            inputBytes: Self.fileSize(of: input),
+            audioSeconds: audioSeconds,
+            wallSeconds: wallSeconds,
+            words: words,
+            chars: chars,
+            formats: outputOptions.resolvedFormats.map(\.rawValue),
+            wantsWords: transcription.words,
+            wantsDiarization: transcription.diarize,
+            status: status,
+            errorMessage: errorMessage
+        )
+    }
+
+    /// Returns the size of a file in bytes, or `nil` when it cannot be read.
+    static func fileSize(of url: URL) -> Int? {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
     }
 
     /// Returns what the progress line says a file was written to.

@@ -222,6 +222,8 @@ struct IntegrationTests {
                 "--reference-dir", folder.references.path,
                 "--overwrite",
                 "--quiet",
+                // A test never writes to the machine's own usage history.
+                "--no-history",
             ]
         )
         try await command.run()

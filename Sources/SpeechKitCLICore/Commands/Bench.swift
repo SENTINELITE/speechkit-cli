@@ -1,5 +1,4 @@
 import ArgumentParser
-import AVFoundation
 import Foundation
 
 /// A `-p` value for `bench`, which accepts `all` as well as a provider name.
@@ -102,6 +101,9 @@ public struct Bench: AsyncParsableCommand, Sendable {
     /// Global verbosity flags.
     @OptionGroup public var globals: GlobalOptions
 
+    /// The usage history opt-out.
+    @OptionGroup public var history: HistoryOptions
+
     /// Creates an empty command.
     public init() {}
 
@@ -165,6 +167,7 @@ public struct Bench: AsyncParsableCommand, Sendable {
         var rows: [BenchRow] = []
         var summaries: [BenchProviderSummary] = []
         let resolver = CredentialResolver(environment: environment, keychain: store)
+        let recorder = HistoryRecorder(noHistory: history.noHistory, console: console)
 
         for current in selection.providers {
             let (providerRows, setupSeconds) = await runPass(
@@ -173,7 +176,8 @@ public struct Bench: AsyncParsableCommand, Sendable {
                 referenceDirectory: referenceDirectory,
                 directory: directory,
                 resolver: resolver,
-                console: console
+                console: console,
+                recorder: recorder
             )
             rows += providerRows
             summaries.append(
@@ -215,7 +219,8 @@ public struct Bench: AsyncParsableCommand, Sendable {
         referenceDirectory: URL?,
         directory: URL,
         resolver: CredentialResolver,
-        console: Console
+        console: Console,
+        recorder: HistoryRecorder = HistoryRecorder(store: nil)
     ) async -> (rows: [BenchRow], setupSeconds: Double?) {
         let capabilities = ProviderCapabilities.capabilities(for: current)
         let clock = ContinuousClock()
@@ -245,6 +250,19 @@ public struct Bench: AsyncParsableCommand, Sendable {
             let rows = files.map { file in
                 BenchRow(file: file.lastPathComponent, provider: current.rawValue, status: reason)
             }
+            // Every file the provider never got to is still a recorded run, so
+            // a provider that cannot start is visible in the failure column.
+            for file in files {
+                await recorder.record(
+                    historyRecord(
+                        file: file,
+                        provider: current,
+                        wallSeconds: 0,
+                        status: HistoryRecord.status(for: error),
+                        errorMessage: HistoryRecord.errorMessage(reason)
+                    )
+                )
+            }
             return (rows, nil)
         }
         let setupSeconds = (clock.now - setupStarted).benchSeconds
@@ -259,7 +277,8 @@ public struct Bench: AsyncParsableCommand, Sendable {
                 runner: runner,
                 referenceDirectory: referenceDirectory,
                 directory: directory,
-                console: console
+                console: console,
+                recorder: recorder
             )
         }
         await runner.finish()
@@ -280,16 +299,28 @@ public struct Bench: AsyncParsableCommand, Sendable {
         runner: any ProviderRunner,
         referenceDirectory: URL?,
         directory: URL,
-        console: Console
+        console: Console,
+        recorder: HistoryRecorder = HistoryRecorder(store: nil)
     ) async -> BenchRow {
-        func failed(_ reason: String) -> BenchRow {
-            BenchRow(file: file.lastPathComponent, provider: current.rawValue, status: reason)
+        let measureStarted = Date()
+        func failed(_ error: Error) async -> BenchRow {
+            let reason = Self.message(for: error)
+            await recorder.record(
+                historyRecord(
+                    file: file,
+                    provider: current,
+                    wallSeconds: Date().timeIntervalSince(measureStarted),
+                    status: HistoryRecord.status(for: error),
+                    errorMessage: HistoryRecord.errorMessage(reason)
+                )
+            )
+            return BenchRow(file: file.lastPathComponent, provider: current.rawValue, status: reason)
         }
 
         do {
             try InputValidation.check(file, capabilities: capabilities)
         } catch {
-            return failed(Self.message(for: error))
+            return await failed(error)
         }
 
         let clock = ContinuousClock()
@@ -302,11 +333,11 @@ public struct Bench: AsyncParsableCommand, Sendable {
                 samples.append((clock.now - started).benchSeconds)
                 transcript = document
             } catch {
-                return failed(Self.message(for: error))
+                return await failed(error)
             }
         }
         guard let document = transcript, let meanWall = samples.mean else {
-            return failed("the provider returned nothing.")
+            return await failed(CLIError.transcriptionFailed(file: file, reason: "the provider returned nothing."))
         }
 
         let plain: String
@@ -328,14 +359,14 @@ public struct Bench: AsyncParsableCommand, Sendable {
                 )
             }
         } catch {
-            return failed(Self.message(for: error))
+            return await failed(error)
         }
 
         var audioSeconds = document.duration
         if audioSeconds == nil {
             // Aqua, Cohere, and ElevenLabs report no duration, and a realtime
             // factor needs one, so the file is probed rather than left blank.
-            audioSeconds = await Self.audioDuration(of: file)
+            audioSeconds = await AudioDuration.seconds(of: file)
         }
         let characters = document.text.count
         let reference = WordErrorRate.referenceText(for: file, directory: referenceDirectory)
@@ -363,6 +394,19 @@ public struct Bench: AsyncParsableCommand, Sendable {
             wer: reference.flatMap { WordErrorRate.rate(reference: $0, hypothesis: document.text) }
         )
 
+        await recorder.record(
+            historyRecord(
+                file: file,
+                provider: current,
+                model: document.model,
+                audioSeconds: audioSeconds,
+                wallSeconds: meanWall,
+                wordCount: row.words ?? 0,
+                charCount: characters,
+                status: HistoryStatus.ok
+            )
+        )
+
         let factor = row.realtimeFactor.map { String(format: " (%.1fx)", $0) } ?? ""
         console.progress(
             String(
@@ -376,6 +420,41 @@ public struct Bench: AsyncParsableCommand, Sendable {
             )
         )
         return row
+    }
+
+    /// Fills in the fields every `bench` record shares.
+    ///
+    /// One record per file per provider, carrying the `--repeat` count, so a
+    /// three-repeat pass is not read later as three separate runs.
+    func historyRecord(
+        file: URL,
+        provider current: CLIProvider,
+        model: String? = nil,
+        audioSeconds: Double? = nil,
+        wallSeconds: Double,
+        wordCount: Int = 0,
+        charCount: Int = 0,
+        status: String,
+        errorMessage: String? = nil
+    ) -> HistoryRecord {
+        HistoryRecord(
+            command: "bench",
+            provider: current.rawValue,
+            model: model,
+            fileName: file.lastPathComponent,
+            filePath: file.standardizedFileURL.path,
+            inputBytes: Transcribe.fileSize(of: file),
+            audioSeconds: audioSeconds,
+            wallSeconds: wallSeconds,
+            words: wordCount,
+            chars: charCount,
+            formats: resolvedFormats.map(\.rawValue),
+            wantsWords: words,
+            wantsDiarization: diarize,
+            repeatCount: repeatCount,
+            status: status,
+            errorMessage: errorMessage
+        )
     }
 
     /// Writes one transcript as `<stem>.<provider>.<extension>`.
@@ -442,16 +521,6 @@ public struct Bench: AsyncParsableCommand, Sendable {
             }
         }
         return (providers, skipped)
-    }
-
-    /// Returns the duration of an audio file, in seconds.
-    ///
-    /// Only the providers that report a duration spare the run this, and the
-    /// ones that do not still need an `audio_seconds` to divide by.
-    static func audioDuration(of file: URL) async -> Double? {
-        guard let duration = try? await AVURLAsset(url: file).load(.duration) else { return nil }
-        let seconds = CMTimeGetSeconds(duration)
-        return seconds.isFinite && seconds > 0 ? seconds : nil
     }
 
     /// Returns the presentable text of any failure.

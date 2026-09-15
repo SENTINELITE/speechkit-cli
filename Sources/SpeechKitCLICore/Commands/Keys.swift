@@ -150,6 +150,9 @@ public struct Keys: ParsableCommand {
         /// Global verbosity flags.
         @OptionGroup public var globals: GlobalOptions
 
+        /// The usage history opt-out.
+        @OptionGroup public var history: HistoryOptions
+
         /// Creates an empty command.
         public init() {}
 
@@ -167,6 +170,11 @@ public struct Keys: ParsableCommand {
                     for: selected,
                     probe: CredentialCheck.liveProbe(clip: clip.url, console: console)
                 )
+                await Self.record(
+                    rows,
+                    clip: clip.url,
+                    recorder: HistoryRecorder(noHistory: history.noHistory, console: console)
+                )
             } else {
                 rows = check.rows(for: selected)
             }
@@ -183,6 +191,35 @@ public struct Keys: ParsableCommand {
 
             let code = CredentialCheck.exitCode(rows)
             if code != 0 { throw ExitCode(code) }
+        }
+
+        /// Records one run per provider that was actually probed.
+        ///
+        /// A provider reported `skipped` was never asked to transcribe
+        /// anything, so it is not a run and nothing is written for it.
+        static func record(
+            _ rows: [CredentialCheckRow],
+            clip: URL,
+            recorder: HistoryRecorder
+        ) async {
+            guard recorder.isEnabled else { return }
+            let probed = rows.filter { $0.status == .ok || $0.status == .failed }
+            guard !probed.isEmpty else { return }
+            let audioSeconds = await AudioDuration.seconds(of: clip)
+
+            for row in probed {
+                await recorder.record(
+                    HistoryRecord(
+                        command: "keys check",
+                        provider: row.provider,
+                        fileName: clip.lastPathComponent,
+                        audioSeconds: audioSeconds,
+                        wallSeconds: row.seconds ?? 0,
+                        status: row.status == .ok ? HistoryStatus.ok : HistoryStatus.provider,
+                        errorMessage: row.detail.flatMap(HistoryRecord.errorMessage)
+                    )
+                )
+            }
         }
     }
 }
