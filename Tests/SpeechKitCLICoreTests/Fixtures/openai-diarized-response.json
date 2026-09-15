@@ -1,0 +1,9 @@
+{
+  "text": "Hello there. How are you?",
+  "duration": 3.25,
+  "languages": [{ "code": "en" }],
+  "diarized_segments": [
+    { "speaker": "A", "start": 0.0, "end": 0.95, "text": "Hello there." },
+    { "speaker": "B", "start": 1.4, "end": 2.2, "text": "How are you?" }
+  ]
+}

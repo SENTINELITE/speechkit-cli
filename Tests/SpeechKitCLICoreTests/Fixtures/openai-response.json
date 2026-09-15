@@ -1,0 +1,13 @@
+{
+  "text": "Hello there. How are you?",
+  "language": "en",
+  "duration": 3.25,
+  "words": [
+    { "word": "Hello", "start": 0.0, "end": 0.42 },
+    { "word": "there.", "start": 0.42, "end": 0.95 }
+  ],
+  "segments": [
+    { "id": 0, "start": 0.0, "end": 0.95, "text": " Hello there. " },
+    { "id": 1, "start": 1.4, "end": 2.2, "text": "How are you?" }
+  ]
+}
