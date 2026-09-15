@@ -353,32 +353,14 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         return document
     }
 
+    /// Returns the input files, checked against the provider's limits.
+    ///
+    /// The per-file checks live in ``InputValidation`` so `bench` can apply the
+    /// same ones per provider without raising them as usage errors.
     func resolvedInputs(capabilities: ProviderCapabilities) throws -> [URL] {
-        let manager = FileManager.default
-        return try files.map { path in
+        try files.map { path in
             let url = URL(fileURLWithPath: path)
-            var isDirectory: ObjCBool = false
-            guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-                throw CLIError.fileNotFound(url)
-            }
-            if isDirectory.boolValue {
-                throw CLIError.inputIsDirectory(url)
-            }
-            guard manager.isReadableFile(atPath: url.path) else {
-                throw CLIError.fileUnreadable(url)
-            }
-            if let accepted = capabilities.acceptedExtensions {
-                let extensionName = url.pathExtension.lowercased()
-                guard accepted.contains(extensionName) else {
-                    throw CLIError.unsupportedFileExtension(url, accepted: accepted)
-                }
-            }
-            if let limit = capabilities.maxFileBytes {
-                let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-                if let size = values?.fileSize, Int64(size) > limit {
-                    throw CLIError.fileTooLarge(url, limit: limit)
-                }
-            }
+            try InputValidation.check(url, capabilities: capabilities)
             return url
         }
     }

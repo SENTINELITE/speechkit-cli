@@ -167,4 +167,79 @@ struct IntegrationTests {
         guard await Self.hasCachedVozModel else { return }
         Self.expectTranscript(try await Self.transcribe(.voz), provider: .voz)
     }
+    /// Speaks several phrases into a folder of WAVs, with matching references.
+    ///
+    /// - Returns: The audio directory, the reference directory holding one
+    ///   `<stem>.txt` per file, and the parent to delete afterwards.
+    static func makeBenchFolder() throws -> (audio: URL, references: URL, root: URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("speechkit-bench-integration-\(UUID().uuidString)", isDirectory: true)
+        let audio = root.appendingPathComponent("in", isDirectory: true)
+        let references = root.appendingPathComponent("refs", isDirectory: true)
+        try FileManager.default.createDirectory(at: audio, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: references, withIntermediateDirectories: true)
+
+        let phrases = [
+            "one": phrase,
+            "two": "The rain in Spain stays mainly in the plain.",
+        ]
+        for (stem, spoken) in phrases {
+            let aiff = root.appendingPathComponent("\(stem).aiff")
+            try run("/usr/bin/say", ["-o", aiff.path, spoken])
+            try run("/usr/bin/afconvert", [
+                "-f", "WAVE", "-d", "LEI16@16000", "-c", "1",
+                aiff.path, audio.appendingPathComponent("\(stem).wav").path,
+            ])
+            try spoken.write(
+                to: references.appendingPathComponent("\(stem).txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        return (audio, references, root)
+    }
+
+    @Test(
+        "bench compares the on-device providers over a folder and scores them",
+        .enabled(if: IntegrationTests.hasAppleTranscriber)
+    )
+    func bench() async throws {
+        guard #available(macOS 26.0, *) else { return }
+        let folder = try Self.makeBenchFolder()
+        defer { try? FileManager.default.removeItem(at: folder.root) }
+        let output = folder.root.appendingPathComponent("out", isDirectory: true)
+
+        // VOZ joins the comparison only when its model is already on disk, so
+        // a test run never triggers a 467 MB download.
+        var providers = ["-p", "apple"]
+        if Self.wantsVozIntegration, await Self.hasCachedVozModel {
+            providers += ["-p", "voz"]
+        }
+
+        let command = try Bench.parse(
+            [folder.audio.path] + providers + [
+                "-o", output.path,
+                "--reference-dir", folder.references.path,
+                "--overwrite",
+                "--quiet",
+            ]
+        )
+        try await command.run()
+
+        for name in ["summary.csv", "summary.md", "summary.json"] {
+            #expect(FileManager.default.fileExists(atPath: output.appendingPathComponent(name).path))
+        }
+        #expect(FileManager.default.fileExists(atPath: output.appendingPathComponent("one.apple.txt").path))
+
+        let data = try Data(contentsOf: output.appendingPathComponent("summary.json"))
+        let report = try JSONDecoder().decode(BenchReport.self, from: data)
+        // Two files through each provider named in the pass.
+        #expect(report.rows.count == 2 * (providers.count / 2))
+        for row in report.rows {
+            #expect(row.status == BenchRow.okStatus)
+            #expect((row.wer ?? 1) < 0.5)
+            #expect((row.wallSeconds ?? 0) > 0)
+            #expect((row.chars ?? 0) > 0)
+        }
+    }
 }

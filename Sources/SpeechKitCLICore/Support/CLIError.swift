@@ -33,6 +33,8 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case transcriptionFailed(file: URL, reason: String)
     /// No credential was found for the provider.
     case missingCredential(CLIProvider)
+    /// Every provider a benchmark was given lacked a credential.
+    case noRunnableProviders([CLIProvider])
     /// Apple local transcription needs a newer operating system.
     case appleUnavailable
     /// An on-device model could not be downloaded or loaded.
@@ -80,6 +82,10 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
         case .missingCredential(let provider):
             let variable = CredentialResolver.environmentVariableName(for: provider)
             return "No credential for \(provider.rawValue). Pass --api-key or set \(variable)."
+        case .noRunnableProviders(let providers):
+            let names = providers.map(\.rawValue).sorted().joined(separator: ", ")
+            let list = names.isEmpty ? "the providers named" : names
+            return "No provider could run: no credential for \(list). Run 'speechkit providers' to see where each key is looked for."
         case .appleUnavailable:
             return "Apple local transcription requires macOS 26 or later."
         case .modelNotReady(let provider, let reason):
@@ -115,6 +121,7 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
         case .writeFailed, .transcriptionFailed:
             return 2
         case .missingCredential,
+             .noRunnableProviders,
              .appleUnavailable,
              .modelNotReady,
              .modelDownloadRefused,

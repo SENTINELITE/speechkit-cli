@@ -135,7 +135,10 @@ public final class VozRunner: ProviderRunner {
             duration: response.duration,
             segments: segments,
             words: words,
-            warnings: warnings
+            warnings: warnings,
+            metrics: TranscriptDocument.Metrics(
+                processingSeconds: response.processingTime
+            ).nonEmpty
         )
     }
 }

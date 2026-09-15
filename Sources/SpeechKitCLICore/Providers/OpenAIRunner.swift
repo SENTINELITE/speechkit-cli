@@ -242,6 +242,18 @@ public struct OpenAIRunner: ProviderRunner {
 
         let language = response.language ?? response.languages?.first?.code
 
+        // OpenAI reports audio seconds for the audio-billed models and tokens
+        // for the token-billed ones, never both, and older responses carry no
+        // usage object at all.
+        let metrics = response.usage.flatMap { usage in
+            TranscriptDocument.Metrics(
+                billedSeconds: usage.seconds,
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens
+            ).nonEmpty
+        }
+
         return TranscriptDocument(
             provider: CLIProvider.openai.rawValue,
             model: modelID.rawValue,
@@ -251,7 +263,8 @@ public struct OpenAIRunner: ProviderRunner {
             duration: response.duration,
             segments: segments,
             words: words,
-            warnings: warnings
+            warnings: warnings,
+            metrics: metrics
         )
     }
 

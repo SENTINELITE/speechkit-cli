@@ -11,7 +11,9 @@ responses are mapped into one neutral `TranscriptDocument` that the formatters
 render. The package is a path dependency (`.package(path: "../SpeechKit")`), so
 this checkout and the SpeechKit checkout must sit side by side in the same
 parent directory and the tool always builds against whatever is on disk. VOZ
-comes from a second path dependency, `../SpeechKit-Voz`.
+comes from a second path dependency, `../SpeechKit-Voz`. `speechkit bench` runs
+a folder of recordings through several providers at once and tabulates what each
+one cost and how close it came to a reference transcript.
 
 ## Requirements
 
@@ -103,6 +105,9 @@ speechkit transcribe *.wav --provider grok --format srt --diarize --output ./sub
 # On-device transcription, JSON piped into jq
 speechkit transcribe talk.mp3 --provider apple --language en-US --format json | jq .segments
 
+# Compare three providers over a folder, scored against reference transcripts
+speechkit bench ./recordings/ -p voz -p apple -p openai -o ./bench/ --reference-dir ./refs/
+
 # Discovery
 speechkit providers
 speechkit languages meta
@@ -163,6 +168,162 @@ with code 1 before a byte leaves the machine.
 ElevenLabs the upload asks for word timestamps whether or not `--words` was
 passed. On OpenAI that means the run uses `whisper-1` unless `--model` says
 otherwise, because OpenAI returns word timestamps from no other model.
+
+## Benchmarking providers
+
+`speechkit bench` runs the same audio through several providers and writes one
+table comparing them on speed, output size, and accuracy. It is for the question
+"which of these should I use for this kind of recording", so the transcripts are
+written side by side for reading and the numbers are written three ways for
+sorting.
+
+```sh
+speechkit bench ./recordings/ -p voz -p apple -p grok -o ./bench/
+speechkit bench a.wav b.m4a -p openai -p gemini --words -o ./bench/ --repeat 3 --reference-dir ./refs/
+```
+
+Positional arguments are files or directories. A directory contributes its
+top-level files whose extension is one of `wav`, `mp3`, `m4a`, `aac`, `flac`,
+`ogg`, `opus`, `mp4`, `webm`, `aiff`, `aif`, or `caf`, sorted by name; `--recursive`
+walks subdirectories too. Hidden files are skipped. A file named outright is
+taken whatever it is called.
+
+`-p`/`--provider` is repeatable and at least one is required. `all` expands to
+every provider that has a credential on this machine or needs none, which is
+exactly what the credential column of `speechkit providers` shows. A provider
+named explicitly with no credential is a warning and a skip, not the end of the
+run: one missing key should not cost you the other five columns. The run exits
+with code 3 only when no provider could run at all.
+
+Providers run one after another, and within a provider the files run one at a
+time by default, because two uploads in flight make each other's timings
+meaningless. `--jobs` raises that if you only care about throughput. VOZ loads
+its Core ML model once for the whole provider pass; that load is reported as
+`setup_seconds` in the summary and is deliberately left out of the per-file
+timings.
+
+### What is timed
+
+The clock starts immediately before the provider call and stops when it
+returns, using `ContinuousClock`. Finding the files, checking them against the
+provider's limits, rendering text or subtitles, writing files, probing the audio
+duration, and scoring the word error rate all happen outside it. `wall_seconds`
+is therefore the provider's number and nothing else — for a cloud provider it
+includes the upload and the queue, because you pay for those too.
+
+With `--repeat N` each file is transcribed N times per provider;
+`wall_seconds` is the mean and `wall_min_seconds` the fastest. Only the last
+run's transcript is kept.
+
+### Output layout
+
+Everything goes in the `-o` directory:
+
+```
+bench/
+  talk.apple.txt        # <stem>.<provider>.<format>, one per --format
+  talk.voz.txt
+  talk.voz.srt
+  summary.csv
+  summary.md
+  summary.json
+```
+
+`--format` defaults to `txt` and is repeatable; `--json-transcripts` adds the
+full JSON document whatever `--format` says. An existing transcript file is
+skipped with a warning unless `--overwrite` is passed. The three summary files
+are always rewritten.
+
+### Columns
+
+One row per file per provider, sorted by file and then provider. A cell is
+blank when nothing supplied it, so a failed run never contributes a zero to a
+column you might average.
+
+| Column | Meaning |
+| --- | --- |
+| `file` | The input file name. |
+| `provider` | The provider that produced the row. |
+| `model` | The model the provider reported. Blank for Apple, which has none. |
+| `audio_seconds` | The audio duration, from the transcript when the provider reports one, otherwise probed with AVFoundation. |
+| `wall_seconds` | Mean wall time of the provider call, over `--repeat`. |
+| `wall_min_seconds` | The fastest of those repeats. |
+| `realtime_factor` | `audio_seconds / wall_seconds`. `20x` means twenty seconds of audio a second. |
+| `processing_seconds` | Compute time the provider reported, not wall time. VOZ reports it; the cloud providers do not. |
+| `billed_seconds` | Billable audio seconds the provider counted. OpenAI and Aqua report it. |
+| `total_tokens` | Tokens the provider counted, for the token-billed models. Blank elsewhere. |
+| `chars` | Characters of transcript text. |
+| `words` | Words of transcript text, counted after the same normalisation the word error rate uses. |
+| `est_tokens` | An estimate, `ceil(chars / 4)`, for comparing providers none of which reports tokens. It is a rule of thumb, not a tokenizer. |
+| `bytes` | Bytes of the plain-text transcript. |
+| `segments` | Segments in the transcript. |
+| `has_word_timings` | Whether the transcript carries word-level timings. |
+| `wer` | Word error rate against the reference, to three decimals. Blank without one. |
+| `status` | `ok`, or the error. Cut short in the CSV and the Markdown; whole in `summary.json`. |
+
+`summary.md` carries a second, smaller table aggregating each provider: files,
+failures, total audio seconds, total wall seconds, the overall realtime factor,
+the mean word error rate where there was one, and `setup_seconds`. That table is
+also printed to standard output when the run finishes, unless `--quiet`.
+Progress stays on standard error, one line per file:
+
+```
+[voz 3/12] talk.wav 0.4 s (12.1x)
+```
+
+### Word error rate
+
+Pass `--reference-dir` and the run looks for `<stem>.txt` in it. Without the
+flag, a `<stem>.reference.txt` sitting beside the input counts instead, so a
+folder can carry its own answers.
+
+Both sides are normalised the same way: lowercased, every character that is not
+a letter, a digit, or an apostrophe treated as a separator, apostrophes kept
+only inside a word, and whitespace collapsed. Nothing else is expanded — "25"
+and "twenty five" stay different, and so do "Dr" and "doctor". The score is the
+word-level Levenshtein distance divided by the number of words in the reference,
+reported to three decimals. It can exceed one, when a provider says more than
+the reference does. An empty reference is reported as a blank cell rather than a
+division by zero.
+
+Word error rate is a coarse instrument, and the point of writing the transcripts
+side by side is that you can read them. A provider that writes "seashore" where
+the reference says "sea shore" scores two errors for something no listener would
+call a mistake.
+
+## `speechkit bench` flags
+
+The flag set is small on purpose. `--model`, `--api-key`, `--endpoint`,
+`--timeout`, `--prompt`, and the `--max-cue-*` limits are not accepted: a value
+that can only suit one of the providers being compared makes two columns
+incomparable, and credentials that belong to one provider cannot be passed on a
+command line comparing several. Keys come from the environment and the keychain
+only.
+
+| Flag | Value | Default | Notes |
+| --- | --- | --- | --- |
+| `<inputs>` | files or directories | — | A directory contributes its audio files. |
+| `-p`, `--provider` | a provider name, or `all` | — | Repeatable. Required. |
+| `-o`, `--output` | directory | — | Required. Created if missing. |
+| `-l`, `--language` | language code | provider default | Repeatable. Passed to every provider. |
+| `--words` | flag | off | Request word-level timestamps from every provider. |
+| `--diarize` | flag | off | Request speaker labels from every provider. |
+| `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable. Written per file and provider. |
+| `--json-transcripts` | flag | off | Also write the JSON document for every file. |
+| `--reference-dir` | directory | — | Holds `<stem>.txt` reference transcripts for the word error rate. |
+| `--recursive` | flag | off | Include audio files in subdirectories. |
+| `--repeat` | integer | `1` | Transcribe each file this many times per provider. |
+| `-j`, `--jobs` | integer | `1` | Files in flight per provider, capped at 8. One, for fair timing. |
+| `--no-download` | flag | off | Fail instead of downloading a missing on-device model. |
+| `--overwrite` | flag | off | Replace existing transcript files. Summaries are always rewritten. |
+| `-v`, `--verbose` | flag | off | Per-file progress to stderr whether or not it is a terminal. |
+| `-q`, `--quiet` | flag | off | Suppress warnings, progress, and the aggregate table. |
+
+A file the provider rejects before the upload — missing, unreadable, too large,
+an extension it does not accept — is a failed row rather than a failed run,
+because Aqua's 25 MB limit should not abort the Gemini pass over the same
+folder. So is a `--model`-less provider that cannot serve `--words` or
+`--diarize`. The run exits with code 2 when any row failed.
 
 ## Providers
 
@@ -286,7 +447,10 @@ blank line.
 
 **json** — the `TranscriptDocument`: provider, model, source file, text,
 language, duration, segments, words, and warnings. Pretty-printed with sorted
-keys.
+keys. Providers that report what a transcription cost carry a `metrics` object
+too: `processingSeconds` from VOZ, `billedSeconds` from OpenAI and Aqua, and
+OpenAI's token counts. The key is absent for the providers that report none of
+it, so nothing that read this output before has to change.
 
 **srt** — cues numbered from one, `00:00:01,520 --> 00:00:04,640` timings with a
 comma before the milliseconds, a blank line between cues, UTF-8 with LF endings
@@ -314,7 +478,7 @@ times.
 | 0 | Every file succeeded. |
 | 1 | Usage or configuration error found before any work: bad flag combination, unsupported capability, invalid model or language, missing or unreadable input, unsupported extension, oversized file, existing output, or no timing data for a subtitle format. |
 | 2 | At least one file failed while others succeeded; the successful transcripts are still written and the failures are listed on stderr. |
-| 3 | No credential for the provider, `--provider apple` on macOS 15, a VOZ model that cannot be downloaded or loaded, `--no-download` with an uncached VOZ model, or a keychain failure. |
+| 3 | No credential for the provider, `--provider apple` on macOS 15, a VOZ model that cannot be downloaded or loaded, `--no-download` with an uncached VOZ model, or a keychain failure. Under `bench`, only when no provider could run at all. |
 
 Transcripts go to standard output unless `--output` is passed. Progress,
 warnings, and errors always go to standard error, so the tool stays pipeable.

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0 — 2026-09-15
+
+`speechkit bench` compares providers over the same audio.
+
+- `speechkit bench <files or folders> -p <provider> ... -o <directory>` runs the
+  same recordings through several providers and writes `<stem>.<provider>.txt`
+  for reading side by side, plus `summary.csv`, `summary.md`, and
+  `summary.json`. A directory argument contributes its audio files, and
+  `--recursive` reaches the subdirectories.
+- Each row reports wall time, the realtime factor, the provider's own processing
+  and billing numbers, characters, words, an estimated token count, bytes,
+  segments, whether there are word timings, and the word error rate. Only the
+  provider call is timed, with `ContinuousClock`; validating, formatting, and
+  writing happen outside the clock.
+- `--reference-dir` scores each transcript against a `<stem>.txt` reference with
+  a word-level Levenshtein distance over lowercased, depunctuated text. A
+  `<stem>.reference.txt` beside the input works without the flag.
+- `-p all` runs every provider that has a credential or needs none. A named
+  provider without one is a warning and a skip; the run exits 3 only when
+  nothing could run. A file one provider rejects is a failed row rather than a
+  failed run, and any failed row exits 2.
+- `--repeat N` transcribes each file N times per provider and reports the mean
+  and the fastest. `--jobs` defaults to 1, so timings are not measured against
+  each other.
+- VOZ prepares its model once per provider pass. That cost is reported as
+  `setup_seconds` beside the aggregate rather than charged to the first file.
+- `TranscriptDocument` gains an optional `metrics` object carrying
+  `processingSeconds` (VOZ), `billedSeconds` (OpenAI, Aqua), and OpenAI's token
+  counts. It is omitted from JSON output entirely when a provider reports none
+  of it.
+
 ## 0.5.0 — 2026-09-15
 
 The on-device VOZ model joins the provider list.

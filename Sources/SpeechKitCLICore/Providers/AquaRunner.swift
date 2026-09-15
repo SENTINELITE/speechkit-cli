@@ -85,7 +85,8 @@ public struct AquaRunner: ProviderRunner {
             duration: nil,
             segments: CueBuilder().segments(from: [], fallbackText: response.text, duration: nil),
             words: [],
-            warnings: warnings
+            warnings: warnings,
+            metrics: TranscriptDocument.Metrics(billedSeconds: response.usage.seconds).nonEmpty
         )
     }
 }
