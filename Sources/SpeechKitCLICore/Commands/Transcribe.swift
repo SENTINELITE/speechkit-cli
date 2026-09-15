@@ -3,7 +3,7 @@ import Foundation
 import SpeechKit
 
 /// Transcribes one or more audio files.
-public struct Transcribe: AsyncParsableCommand {
+public struct Transcribe: AsyncParsableCommand, Sendable {
     /// The command configuration.
     public static let configuration = CommandConfiguration(
         commandName: "transcribe",
@@ -99,27 +99,17 @@ public struct Transcribe: AsyncParsableCommand {
     /// Runs the command.
     public func run() async throws {
         let console = globals.console
-        let resolver = CredentialResolver()
+        let resolver = CredentialResolver(keychain: KeychainStore())
         guard let provider = provider ?? resolver.environmentProvider() else {
             throw CLIError.missingProvider
         }
 
         let capabilities = ProviderCapabilities.capabilities(for: provider)
-        if transcription.words, !capabilities.supportsWordTimestamps {
-            throw CLIError.unsupportedCapability(provider: provider, capability: "word timestamps")
-        }
-        if transcription.diarize, !capabilities.supportsDiarization {
-            throw CLIError.unsupportedCapability(provider: provider, capability: "speaker labels")
-        }
-        if capabilities.requiresMacOS26, #unavailable(macOS 26.0) {
-            throw CLIError.appleUnavailable
-        }
-        if jobs > 8 {
-            console.warning("--jobs is capped at 8.")
-        }
+        // Everything that can be known before a byte leaves the machine is
+        // checked here, so a rejected run costs no upload and exits with 1.
+        let inputs = try validate(provider: provider, capabilities: capabilities)
 
         let credential = try resolver.resolve(provider: provider, flagAPIKey: transcription.apiKey)
-        let inputs = try resolvedInputs(capabilities: capabilities)
         let context = RunContext(
             credential: credential,
             model: transcription.model,
@@ -144,27 +134,60 @@ public struct Transcribe: AsyncParsableCommand {
             console: console
         )
 
-        // Phase 3 replaces this loop with BatchRunner and --jobs concurrency.
-        var failures = 0
-        for (index, input) in inputs.enumerated() {
-            let outcome = await run(
+        let outcomes = await BatchRunner(jobs: jobs, console: console).run(inputs: inputs) { input, index, total in
+            await run(
                 file: input,
-                index: index + 1,
-                total: inputs.count,
+                index: index,
+                total: total,
                 provider: provider,
                 runner: runner,
                 writer: writer,
                 console: console
             )
-            if let failure = outcome.failure {
-                failures += 1
-                console.error(failure.localizedDescription)
-            }
         }
 
-        if failures > 0 {
+        // Outcomes come back in input order, so failures are reported in the
+        // order the files were named however the uploads interleaved.
+        let failures = outcomes.compactMap(\.failure)
+        for failure in failures {
+            console.error(failure.localizedDescription)
+        }
+        if !failures.isEmpty {
             throw ExitCode(2)
         }
+    }
+
+    /// Checks everything that can be known before the first upload.
+    ///
+    /// - Parameters:
+    ///   - provider: The resolved provider.
+    ///   - capabilities: Its capability record. Tests pass a record with a small
+    ///     byte limit to exercise the size check.
+    /// - Returns: The input files, in the order they were named.
+    /// - Throws: ``CLIError`` with exit code 1 for any problem found here.
+    func validate(provider: CLIProvider, capabilities: ProviderCapabilities) throws -> [URL] {
+        if transcription.words, !capabilities.supportsWordTimestamps {
+            throw CLIError.unsupportedCapability(provider: provider, capability: "word timestamps")
+        }
+        if transcription.diarize, !capabilities.supportsDiarization {
+            throw CLIError.unsupportedCapability(provider: provider, capability: "speaker labels")
+        }
+        if capabilities.requiresMacOS26, #unavailable(macOS 26.0) {
+            throw CLIError.appleUnavailable
+        }
+
+        // Providers that return text only can never produce subtitles. Refusing
+        // here rather than after the upload is the difference between exit 1
+        // and a wasted round trip.
+        let subtitleFormats = outputOptions.resolvedFormats.filter(\.requiresTimings)
+        if !subtitleFormats.isEmpty, !capabilities.supportsSegments {
+            throw CLIError.subtitlesUnsupported(
+                provider: provider,
+                formats: subtitleFormats.map(\.rawValue)
+            )
+        }
+
+        return try resolvedInputs(capabilities: capabilities)
     }
 
     /// Transcribes one file and writes every requested format.
@@ -243,7 +266,7 @@ public struct Transcribe: AsyncParsableCommand {
         return document
     }
 
-    private func resolvedInputs(capabilities: ProviderCapabilities) throws -> [URL] {
+    func resolvedInputs(capabilities: ProviderCapabilities) throws -> [URL] {
         let manager = FileManager.default
         return try files.map { path in
             let url = URL(fileURLWithPath: path)
@@ -253,6 +276,15 @@ public struct Transcribe: AsyncParsableCommand {
             }
             if isDirectory.boolValue {
                 throw CLIError.inputIsDirectory(url)
+            }
+            guard manager.isReadableFile(atPath: url.path) else {
+                throw CLIError.fileUnreadable(url)
+            }
+            if let accepted = capabilities.acceptedExtensions {
+                let extensionName = url.pathExtension.lowercased()
+                guard accepted.contains(extensionName) else {
+                    throw CLIError.unsupportedFileExtension(url, accepted: accepted)
+                }
             }
             if let limit = capabilities.maxFileBytes {
                 let values = try? url.resourceValues(forKeys: [.fileSizeKey])

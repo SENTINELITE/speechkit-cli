@@ -23,6 +23,10 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case fileNotFound(URL)
     /// The input path is a directory.
     case inputIsDirectory(URL)
+    /// The input file exists but cannot be read.
+    case fileUnreadable(URL)
+    /// The input file has an extension the provider does not accept.
+    case unsupportedFileExtension(URL, accepted: [String])
     /// The input file is larger than the provider accepts.
     case fileTooLarge(URL, limit: Int64)
     /// An output file exists and `--overwrite` was not passed.
@@ -37,6 +41,10 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case appleUnavailable
     /// A subtitle format was asked for but the transcript carries no timings.
     case noTimingData(provider: String)
+    /// A subtitle format was asked for from a provider that never returns timings.
+    case subtitlesUnsupported(provider: CLIProvider, formats: [String])
+    /// A keychain operation failed.
+    case keychainFailure(String)
 
     /// A localized description of the error.
     public var errorDescription: String? {
@@ -60,6 +68,11 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return "No such file: \(url.path)"
         case .inputIsDirectory(let url):
             return "\(url.path) is a directory. Pass files, or use a shell glob."
+        case .fileUnreadable(let url):
+            return "Cannot read \(url.path). Check the file permissions."
+        case .unsupportedFileExtension(let url, let accepted):
+            let name = url.pathExtension.isEmpty ? "no extension" : ".\(url.pathExtension.lowercased())"
+            return "\(url.lastPathComponent) has \(name), which the provider does not accept. Accepted: \(accepted.map { ".\($0)" }.joined(separator: ", "))."
         case .fileTooLarge(let url, let limit):
             return "\(url.lastPathComponent) is larger than the provider limit of \(limit) bytes."
         case .outputExists(let url):
@@ -75,6 +88,11 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return "Apple local transcription requires macOS 26 or later."
         case .noTimingData(let provider):
             return "no timing data from \(provider); use --format txt or json, or pick a provider from 'speechkit providers' with segments"
+        case .subtitlesUnsupported(let provider, let formats):
+            let list = formats.map { "--format \($0)" }.joined(separator: " and ")
+            return "\(provider.rawValue) never returns timing data, so \(list) cannot be written; use --format txt or json, or pick a provider from 'speechkit providers' with segments"
+        case .keychainFailure(let reason):
+            return reason
         }
     }
 
@@ -89,13 +107,16 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
              .invalidLanguage,
              .fileNotFound,
              .inputIsDirectory,
+             .fileUnreadable,
+             .unsupportedFileExtension,
              .fileTooLarge,
              .outputExists,
-             .noTimingData:
+             .noTimingData,
+             .subtitlesUnsupported:
             return 1
         case .writeFailed, .transcriptionFailed:
             return 2
-        case .missingCredential, .appleUnavailable:
+        case .missingCredential, .appleUnavailable, .keychainFailure:
             return 3
         }
     }

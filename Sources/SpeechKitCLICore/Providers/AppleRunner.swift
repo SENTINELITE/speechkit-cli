@@ -26,6 +26,9 @@ public struct AppleRunner: ProviderRunner {
         if context.endpoint != nil {
             warnings.append("Apple local transcription runs on device; --endpoint is ignored.")
         }
+        if context.timeout != nil {
+            warnings.append("Apple local transcription has no request timeout; --timeout is ignored.")
+        }
         if context.prompt != nil {
             warnings.append("Apple local transcription takes no prompt; --prompt is ignored.")
         }

@@ -1,4 +1,5 @@
 import Foundation
+import SpeechKit
 
 /// How a provider expects `--language` values.
 public enum LanguageStyle: String, Sendable, Equatable {
@@ -18,6 +19,11 @@ public enum LanguageStyle: String, Sendable, Equatable {
 
 /// What one provider can do.
 public struct ProviderCapabilities: Sendable, Equatable {
+    /// The model identifier used for file transcription when `--model` is absent.
+    ///
+    /// This is `nil` for providers with no model identifier at all, which today
+    /// means Apple's on-device transcriber.
+    public let defaultFileModel: String?
     /// Whether the provider returns word-level timestamps.
     public let supportsWordTimestamps: Bool
     /// Whether the provider returns timed segments.
@@ -38,6 +44,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
 
     /// Creates a capability record.
     public init(
+        defaultFileModel: String?,
         supportsWordTimestamps: Bool,
         supportsSegments: Bool,
         supportsDiarization: Bool,
@@ -46,6 +53,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
         acceptedExtensions: [String]? = nil,
         requiresMacOS26: Bool = false
     ) {
+        self.defaultFileModel = defaultFileModel
         self.supportsWordTimestamps = supportsWordTimestamps
         self.supportsSegments = supportsSegments
         self.supportsDiarization = supportsDiarization
@@ -65,6 +73,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
         case .elevenlabs:
             // ElevenLabs checks size and duration but not the extension.
             return ProviderCapabilities(
+                defaultFileModel: ElevenLabsModelID.scribeV1.rawValue,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: false,
@@ -74,6 +83,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             )
         case .aqua:
             return ProviderCapabilities(
+                defaultFileModel: AquaModelID.avalonV15.rawValue,
                 supportsWordTimestamps: false,
                 supportsSegments: false,
                 supportsDiarization: false,
@@ -83,6 +93,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             )
         case .cohere:
             return ProviderCapabilities(
+                defaultFileModel: CohereModelID.transcribe032026.rawValue,
                 supportsWordTimestamps: false,
                 supportsSegments: false,
                 supportsDiarization: false,
@@ -92,6 +103,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             )
         case .grok:
             return ProviderCapabilities(
+                defaultFileModel: GrokModelID.stt.rawValue,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: true,
@@ -101,6 +113,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             )
         case .openai:
             return ProviderCapabilities(
+                defaultFileModel: OpenAIFileTranscriptionModelID.gptTranscribe.rawValue,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: true,
@@ -112,6 +125,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             // Meta uploads use the WAV encoding, which is the only container its
             // client accepts for prerecorded audio.
             return ProviderCapabilities(
+                defaultFileModel: MetaModelID.museVoiceTranscribe1.rawValue,
                 supportsWordTimestamps: false,
                 supportsSegments: true,
                 supportsDiarization: true,
@@ -124,6 +138,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             // through the Files API, so there is no single upload byte limit.
             // Its client limits duration instead: one hour per file.
             return ProviderCapabilities(
+                defaultFileModel: GeminiFileTranscriptionModelID.transcribe35.rawValue,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: true,
@@ -135,6 +150,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
             )
         case .apple:
             return ProviderCapabilities(
+                defaultFileModel: nil,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: false,

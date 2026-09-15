@@ -64,6 +64,25 @@ struct CredentialsTests {
         #expect(try resolver.resolve(provider: .apple) == nil)
     }
 
+    @Test("All three sources resolve in order through the real store protocol")
+    func threeSourcesInOrder() throws {
+        let store = InMemoryKeychainStore(keys: [.grok: "keychain"])
+        let resolver = CredentialResolver(
+            environment: ["SPEECHKIT_GROK_API_KEY": "env"],
+            keychain: store
+        )
+        #expect(try resolver.resolve(provider: .grok, flagAPIKey: "flag") == .apiKey("flag"))
+        #expect(try resolver.resolve(provider: .grok) == .apiKey("env"))
+
+        let keychainOnly = CredentialResolver(environment: [:], keychain: store)
+        #expect(try keychainOnly.resolve(provider: .grok) == .apiKey("keychain"))
+
+        try store.delete(for: .grok)
+        #expect(throws: CLIError.missingCredential(.grok)) {
+            _ = try keychainOnly.resolve(provider: .grok)
+        }
+    }
+
     @Test("SPEECHKIT_PROVIDER is read case-insensitively")
     func providerFromEnvironment() {
         #expect(CredentialResolver(environment: ["SPEECHKIT_PROVIDER": "OpenAI"]).environmentProvider() == .openai)

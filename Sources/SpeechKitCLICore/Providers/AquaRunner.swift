@@ -28,6 +28,9 @@ public struct AquaRunner: ProviderRunner {
         let language = try LanguageMapping.aqua(context.languages)
         var warnings: [String] = []
 
+        if context.timeout != nil {
+            warnings.append("SpeechKit's Aqua client takes no request timeout; --timeout was dropped.")
+        }
         if context.prompt != nil {
             warnings.append("Aqua has no prompt parameter; --prompt was dropped.")
         }

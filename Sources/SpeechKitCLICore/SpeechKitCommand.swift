@@ -29,15 +29,14 @@ public struct GlobalOptions: ParsableArguments, Sendable {
 
 /// The `speechkit` root command.
 ///
-/// Subcommands are listed here and nowhere else, so later phases can add
-/// `providers`, `languages`, and `keys` by editing this one array.
+/// Subcommands are listed here and nowhere else.
 public struct SpeechKitCommand: AsyncParsableCommand {
     /// The command configuration, including the subcommand list.
     public static let configuration = CommandConfiguration(
         commandName: "speechkit",
         abstract: "Transcribe audio files with any SpeechKit provider.",
-        version: "0.1.0",
-        subcommands: [Transcribe.self],
+        version: "0.3.0",
+        subcommands: [Transcribe.self, Providers.self, Languages.self, Keys.self],
         defaultSubcommand: Transcribe.self
     )
 

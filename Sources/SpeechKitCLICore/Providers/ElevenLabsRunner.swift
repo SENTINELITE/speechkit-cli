@@ -38,6 +38,9 @@ public struct ElevenLabsRunner: ProviderRunner {
         if !context.languages.isEmpty {
             warnings.append("ElevenLabs Scribe detects the language itself; --language was ignored.")
         }
+        if context.timeout != nil {
+            warnings.append("SpeechKit's ElevenLabs client takes no request timeout; --timeout was dropped.")
+        }
         if context.prompt != nil {
             warnings.append("ElevenLabs has no prompt parameter; --prompt was dropped.")
         }

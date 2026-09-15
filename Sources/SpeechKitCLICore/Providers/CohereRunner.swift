@@ -31,6 +31,9 @@ public struct CohereRunner: ProviderRunner {
         let language = try LanguageMapping.cohere(context.languages)
         var warnings: [String] = []
 
+        if context.timeout != nil {
+            warnings.append("SpeechKit's Cohere client takes no request timeout; --timeout was dropped.")
+        }
         if context.prompt != nil {
             warnings.append("Cohere has no prompt parameter; --prompt was dropped.")
         }
