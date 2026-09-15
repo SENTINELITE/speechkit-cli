@@ -1,0 +1,12 @@
+WEBVTT
+
+NOTE
+provider: grok
+model: grok-stt
+language: en
+
+00:00:01.520 --> 00:00:04.640
+How <00:00:01.900>is <00:00:02.100>the <00:00:02.400>weather?
+
+00:00:05.000 --> 00:00:07.250
+It <00:00:05.200>is <00:00:05.400>sunny <00:00:06.000>today.

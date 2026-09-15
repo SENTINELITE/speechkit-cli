@@ -91,19 +91,35 @@ struct FormatterTests {
         #expect(SpeakerLabels.label(at: 26) == "AA")
     }
 
-    @Test("Subtitle formats are not available in this phase")
-    func subtitleFormatsThrow() {
-        #expect(throws: CLIError.notImplemented("--format srt")) {
-            _ = try FormatterRegistry.makeFormatter(for: .srt)
-        }
-        #expect(throws: CLIError.notImplemented("--format vtt")) {
-            _ = try FormatterRegistry.makeFormatter(for: .vtt)
-        }
-    }
-
-    @Test("Registry returns the text and JSON formatters")
+    @Test("Registry returns a formatter for every format")
     func registry() throws {
         #expect(try FormatterRegistry.makeFormatter(for: .txt).fileExtension == "txt")
         #expect(try FormatterRegistry.makeFormatter(for: .json).fileExtension == "json")
+        #expect(try FormatterRegistry.makeFormatter(for: .srt).fileExtension == "srt")
+        #expect(try FormatterRegistry.makeFormatter(for: .vtt).fileExtension == "vtt")
+    }
+
+    @Test("Registry threads the speaker, word timing, and cue limit options through")
+    func registryOptions() throws {
+        let builder = CueBuilder(maxCueDuration: 3, maxCueChars: 30, maxLineChars: 15)
+        let srt = try #require(
+            try FormatterRegistry.makeFormatter(
+                for: .srt,
+                includesSpeakerLabels: true,
+                cueBuilder: builder
+            ) as? SRTFormatter
+        )
+        #expect(srt.showSpeakers)
+        #expect(srt.cueBuilder.maxLineChars == 15)
+
+        let vtt = try #require(
+            try FormatterRegistry.makeFormatter(
+                for: .vtt,
+                includesSpeakerLabels: false,
+                includesWordTimings: true
+            ) as? VTTFormatter
+        )
+        #expect(vtt.showWordTimings)
+        #expect(vtt.showSpeakers == false)
     }
 }

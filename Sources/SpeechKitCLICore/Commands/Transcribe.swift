@@ -60,9 +60,6 @@ public struct Transcribe: AsyncParsableCommand {
         }
 
         let formats = outputOptions.resolvedFormats
-        for format in formats where format.requiresTimings {
-            throw ValidationError("--format \(format.rawValue) is not implemented in this phase. Use txt or json.")
-        }
         if maxCueDuration <= 0 {
             throw ValidationError("--max-cue-duration must be greater than zero.")
         }
@@ -133,7 +130,10 @@ public struct Transcribe: AsyncParsableCommand {
             keywords: transcription.keyword,
             wantsWords: transcription.words,
             wantsDiarization: transcription.diarize,
-            includeRaw: raw
+            includeRaw: raw,
+            maxCueDuration: maxCueDuration,
+            maxCueChars: maxCueChars,
+            cueMode: cues
         )
         let runner = try ProviderRegistry.makeRunner(for: provider, context: context)
         let writer = OutputWriter(
@@ -181,7 +181,8 @@ public struct Transcribe: AsyncParsableCommand {
     ) async -> FileOutcome {
         let started = Date()
         do {
-            let document = try await runner.transcribe(file: input)
+            let transcribed = try await runner.transcribe(file: input)
+            let document = try cueAdjusted(transcribed)
             for warning in document.warnings {
                 console.verbose("speechkit: note: \(warning)")
             }
@@ -190,7 +191,9 @@ public struct Transcribe: AsyncParsableCommand {
             for format in outputOptions.resolvedFormats {
                 let formatter = try FormatterRegistry.makeFormatter(
                     for: format,
-                    includesSpeakerLabels: transcription.diarize
+                    includesSpeakerLabels: transcription.diarize,
+                    includesWordTimings: transcription.words,
+                    cueBuilder: cueBuilder
                 )
                 let text = try formatter.render(document)
                 destinations.append(
@@ -215,6 +218,29 @@ public struct Transcribe: AsyncParsableCommand {
                 failure: .transcriptionFailed(file: input, reason: error.localizedDescription)
             )
         }
+    }
+
+    /// The cue builder carrying the `--max-cue-*` limits.
+    var cueBuilder: CueBuilder {
+        CueBuilder(maxCueDuration: maxCueDuration, maxCueChars: maxCueChars)
+    }
+
+    /// Returns the document with one cue per word when `--cues words` is set.
+    ///
+    /// - Throws: ``CLIError/usage(_:)`` when the provider returned no word
+    ///   timings to build word cues from.
+    func cueAdjusted(_ document: TranscriptDocument) throws -> TranscriptDocument {
+        guard cues == .words, outputOptions.resolvedFormats.contains(where: \.requiresTimings) else {
+            return document
+        }
+        guard !document.words.isEmpty else {
+            throw CLIError.usage(
+                "--cues words needs word timings, and \(document.provider) returned none. Pass --words, or use --cues segments."
+            )
+        }
+        var document = document
+        document.segments = cueBuilder.wordCues(from: document.words)
+        return document
     }
 
     private func resolvedInputs(capabilities: ProviderCapabilities) throws -> [URL] {

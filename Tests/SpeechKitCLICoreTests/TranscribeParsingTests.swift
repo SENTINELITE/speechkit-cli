@@ -70,11 +70,67 @@ struct TranscribeParsingTests {
         #expect(command.provider == nil)
     }
 
-    @Test("Subtitle formats are rejected in this phase")
-    func subtitlesRejected() {
+    @Test("Subtitle formats parse and keep their cue limits")
+    func subtitleFormats() throws {
+        let command = try Transcribe.parse([
+            "a.wav", "-p", "grok", "-f", "srt", "-f", "vtt",
+            "--max-cue-duration", "4.5", "--max-cue-chars", "60",
+        ])
+        #expect(command.outputOptions.resolvedFormats == [.srt, .vtt])
+        #expect(command.cueBuilder.maxCueDuration == 4.5)
+        #expect(command.cueBuilder.maxCueChars == 60)
+    }
+
+    @Test("Cue limits must be positive")
+    func cueLimitsValidated() {
         #expect(throws: (any Error).self) {
-            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt"])
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt", "--max-cue-duration", "0"])
         }
+        #expect(throws: (any Error).self) {
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt", "--max-cue-chars", "0"])
+        }
+    }
+
+    @Test("--cues words replaces the segments with one cue per word")
+    func cuesWords() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "vtt", "--cues", "words"])
+        let adjusted = try command.cueAdjusted(SubtitleSample.document)
+        #expect(adjusted.segments.count == 8)
+        #expect(adjusted.segments.map(\.text).first == "How")
+    }
+
+    @Test("--cues words leaves non-subtitle output alone")
+    func cuesWordsIgnoredForText() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "txt", "--cues", "words"])
+        #expect(try command.cueAdjusted(SubtitleSample.document) == SubtitleSample.document)
+    }
+
+    @Test("--cues words needs word timings")
+    func cuesWordsWithoutWords() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt", "--cues", "words"])
+        var document = SubtitleSample.document
+        document.words = []
+        #expect(throws: CLIError.self) {
+            _ = try command.cueAdjusted(document)
+        }
+    }
+
+    @Test("--cues segments leaves the provider segments in place")
+    func cuesSegments() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt"])
+        #expect(try command.cueAdjusted(SubtitleSample.document) == SubtitleSample.document)
+    }
+
+    @Test("The run context carries the cue limits and mode")
+    func runContextDefaults() {
+        let defaults = RunContext()
+        #expect(defaults.maxCueDuration == 7)
+        #expect(defaults.maxCueChars == 84)
+        #expect(defaults.cueMode == .segments)
+
+        let context = RunContext(maxCueDuration: 4, maxCueChars: 50, cueMode: .words)
+        #expect(context.cueBuilder.maxCueDuration == 4)
+        #expect(context.cueBuilder.maxCueChars == 50)
     }
 
     @Test("--output needs one file and one format")

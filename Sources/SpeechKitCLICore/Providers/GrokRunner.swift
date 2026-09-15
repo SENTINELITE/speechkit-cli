@@ -28,7 +28,13 @@ public struct GrokRunner: ProviderRunner {
             fileEndpoint: context.endpoint
         )
         let response = try await Self.send(file: file, configuration: configuration)
-        return Self.map(response, file: file, modelID: modelID, includeRaw: context.includeRaw)
+        return Self.map(
+            response,
+            file: file,
+            modelID: modelID,
+            includeRaw: context.includeRaw,
+            cueBuilder: context.cueBuilder
+        )
     }
 
     private func resolvedModelID() throws -> GrokModelID {
@@ -57,7 +63,8 @@ public struct GrokRunner: ProviderRunner {
         _ response: GrokFileTranscriptionResponse,
         file: URL,
         modelID: GrokModelID,
-        includeRaw: Bool = false
+        includeRaw: Bool = false,
+        cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
         var warnings: [String] = []
         if includeRaw {
@@ -73,9 +80,11 @@ public struct GrokRunner: ProviderRunner {
             )
         }
 
-        // TODO: phase 2 replaces this with CueBuilder, which also honours
-        // gap, speaker change, and cue length limits.
-        let segments = SentenceSegmenter.segments(from: words, fallbackText: response.text, duration: response.duration)
+        let segments = cueBuilder.segments(
+            from: words,
+            fallbackText: response.text,
+            duration: response.duration
+        )
         if words.isEmpty {
             warnings.append("Grok returned no word timings; the transcript is one untimed segment.")
         }

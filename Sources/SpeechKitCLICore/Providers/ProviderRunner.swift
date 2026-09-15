@@ -23,6 +23,12 @@ public struct RunContext: Sendable {
     public var wantsDiarization: Bool
     /// Whether the provider's raw response should be kept.
     public var includeRaw: Bool
+    /// The longest subtitle cue, in seconds.
+    public var maxCueDuration: Double
+    /// The longest subtitle cue, in characters.
+    public var maxCueChars: Int
+    /// Whether subtitle cues come from segments or from single words.
+    public var cueMode: CueMode
 
     /// Creates a run context.
     public init(
@@ -35,7 +41,10 @@ public struct RunContext: Sendable {
         keywords: [String] = [],
         wantsWords: Bool = false,
         wantsDiarization: Bool = false,
-        includeRaw: Bool = false
+        includeRaw: Bool = false,
+        maxCueDuration: Double = 7,
+        maxCueChars: Int = 84,
+        cueMode: CueMode = .segments
     ) {
         self.credential = credential
         self.model = model
@@ -47,6 +56,14 @@ public struct RunContext: Sendable {
         self.wantsWords = wantsWords
         self.wantsDiarization = wantsDiarization
         self.includeRaw = includeRaw
+        self.maxCueDuration = maxCueDuration
+        self.maxCueChars = maxCueChars
+        self.cueMode = cueMode
+    }
+
+    /// A cue builder carrying the limits from the command line.
+    public var cueBuilder: CueBuilder {
+        CueBuilder(maxCueDuration: maxCueDuration, maxCueChars: maxCueChars)
     }
 
     /// Returns the credential, or throws when the provider requires one.

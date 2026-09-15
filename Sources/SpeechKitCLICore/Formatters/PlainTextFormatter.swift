@@ -73,6 +73,29 @@ public enum SpeakerLabels {
         return turns
     }
 
+    /// Returns the display label for each segment, or `nil` where a segment has
+    /// no speaker and none of the segments do.
+    ///
+    /// Labels are assigned in order of first appearance, so the first speaker
+    /// heard is `A`. Segments with no speaker in an otherwise labelled
+    /// transcript share one label, because the provider gave nothing to tell
+    /// them apart.
+    public static func labels(in segments: [TranscriptDocument.Segment]) -> [String?] {
+        guard segments.contains(where: { $0.speaker != nil }) else {
+            return Array(repeating: nil, count: segments.count)
+        }
+        var assigned: [String: String] = [:]
+        var nextIndex = 0
+        return segments.map { segment in
+            let key = segment.speaker ?? "?"
+            if let existing = assigned[key] { return existing }
+            let label = self.label(at: nextIndex)
+            assigned[key] = label
+            nextIndex += 1
+            return label
+        }
+    }
+
     /// Returns the label for a zero-based speaker index: `A`, `B`, ... `Z`, `AA`.
     public static func label(at index: Int) -> String {
         var remaining = index

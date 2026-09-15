@@ -40,7 +40,13 @@ public struct OpenAIRunner: ProviderRunner {
             timeoutInterval: context.timeout ?? 10 * 60
         )
         let response = try await Self.send(file: file, configuration: configuration, options: options)
-        return Self.map(response, file: file, modelID: modelID, includeRaw: context.includeRaw)
+        return Self.map(
+            response,
+            file: file,
+            modelID: modelID,
+            includeRaw: context.includeRaw,
+            cueBuilder: context.cueBuilder
+        )
     }
 
     private func resolvedModelID() throws -> OpenAIFileTranscriptionModelID {
@@ -72,7 +78,8 @@ public struct OpenAIRunner: ProviderRunner {
         _ response: OpenAIFileTranscriptionResponse,
         file: URL,
         modelID: OpenAIFileTranscriptionModelID,
-        includeRaw: Bool = false
+        includeRaw: Bool = false,
+        cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
         var warnings: [String] = []
         if includeRaw {
@@ -102,7 +109,7 @@ public struct OpenAIRunner: ProviderRunner {
                 )
             }
         } else {
-            segments = SentenceSegmenter.segments(
+            segments = cueBuilder.segments(
                 from: words,
                 fallbackText: response.text,
                 duration: response.duration

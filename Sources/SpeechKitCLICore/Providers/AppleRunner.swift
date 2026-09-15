@@ -36,7 +36,13 @@ public struct AppleRunner: ProviderRunner {
             contextualStrings: context.keywords
         )
         let response = try await Self.send(file: file, configuration: configuration)
-        return Self.map(response, file: file, includeRaw: context.includeRaw, warnings: warnings)
+        return Self.map(
+            response,
+            file: file,
+            includeRaw: context.includeRaw,
+            warnings: warnings,
+            cueBuilder: context.cueBuilder
+        )
     }
 
     @MainActor
@@ -53,7 +59,8 @@ public struct AppleRunner: ProviderRunner {
         _ response: AppleSpeechFileTranscriptionResponse,
         file: URL,
         includeRaw: Bool = false,
-        warnings: [String] = []
+        warnings: [String] = [],
+        cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
         var warnings = warnings
         if includeRaw {
@@ -63,16 +70,6 @@ public struct AppleRunner: ProviderRunner {
         // Apple does not diarize. SpeechKit fills `speaker` on Apple entries with
         // the locale identifier, so the runner drops it rather than pass a
         // locale off as a speaker label.
-        let segments = response.entries.map { entry in
-            let start = entry.start ?? 0
-            return TranscriptDocument.Segment(
-                start: start,
-                end: start + (entry.duration ?? 0),
-                text: entry.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                speaker: nil
-            )
-        }
-
         let words = response.entries.flatMap { entry in
             entry.words.map { word in
                 TranscriptDocument.Word(
@@ -84,6 +81,28 @@ public struct AppleRunner: ProviderRunner {
                 )
             }
         }
+
+        // Apple's entries are analyser chunks rather than readable cues: one
+        // sentence can arrive as half a dozen entries, and a long pause can
+        // arrive as one. When every entry carries word timings the cue builder
+        // regroups the words into cues that obey the command line limits, which
+        // is what the subtitle formats need. Otherwise the entries stand as
+        // they came.
+        let entrySegments = response.entries.compactMap { entry -> TranscriptDocument.Segment? in
+            let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            let start = entry.start ?? 0
+            return TranscriptDocument.Segment(
+                start: start,
+                end: start + (entry.duration ?? 0),
+                text: text,
+                speaker: nil
+            )
+        }
+        let hasWordTimings = !words.isEmpty && words.allSatisfy { $0.start != nil }
+        let segments = hasWordTimings
+            ? cueBuilder.segments(from: words, fallbackText: response.text, duration: nil)
+            : entrySegments
 
         let duration = segments.map(\.end).max()
 

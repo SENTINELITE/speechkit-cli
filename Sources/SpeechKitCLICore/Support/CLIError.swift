@@ -35,6 +35,8 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case missingCredential(CLIProvider)
     /// Apple local transcription needs a newer operating system.
     case appleUnavailable
+    /// A subtitle format was asked for but the transcript carries no timings.
+    case noTimingData(provider: String)
 
     /// A localized description of the error.
     public var errorDescription: String? {
@@ -71,6 +73,8 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return "No credential for \(provider.rawValue). Pass --api-key or set \(variable)."
         case .appleUnavailable:
             return "Apple local transcription requires macOS 26 or later."
+        case .noTimingData(let provider):
+            return "no timing data from \(provider); use --format txt or json, or pick a provider from 'speechkit providers' with segments"
         }
     }
 
@@ -86,7 +90,8 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
              .fileNotFound,
              .inputIsDirectory,
              .fileTooLarge,
-             .outputExists:
+             .outputExists,
+             .noTimingData:
             return 1
         case .writeFailed, .transcriptionFailed:
             return 2

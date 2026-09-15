@@ -1,0 +1,7 @@
+1
+100:00:00,000 --> 100:00:02,500
+Still talking after a hundred hours.
+
+2
+101:01:01,001 --> 101:01:01,002
+A zero length cue still plays.
