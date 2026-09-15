@@ -1,0 +1,5 @@
+{
+  "text": "Hello there. How are you?",
+  "usage": { "type": "duration", "seconds": 3.25 },
+  "_request_id": "req_1"
+}

@@ -50,42 +50,105 @@ public enum LanguageMapping {
 
     /// Returns the Gemini language codes for the requested codes.
     ///
-    /// - Throws: ``CLIError/notImplemented(_:)`` until the Gemini runner lands.
-    public static func gemini(_ codes: [String]) throws -> [String] {
-        guard codes.isEmpty else {
-            throw CLIError.notImplemented("--language for gemini")
-        }
-        return []
+    /// Gemini takes BCP-47 tags, so codes pass through with the region subtag
+    /// intact. Empty entries are dropped so `--language ""` does not reach the API.
+    public static func gemini(_ codes: [String]) -> [String] {
+        codes
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
-    /// Returns the Meta language for the first requested code.
+    /// Language names Meta accepts, keyed by the code callers are likely to pass.
     ///
-    /// - Throws: ``CLIError/notImplemented(_:)`` until the Meta code-to-name table lands.
-    public static func meta(_ codes: [String]) throws -> String? {
-        guard codes.isEmpty else {
-            throw CLIError.notImplemented("--language for meta")
+    /// Meta biases transcription with names such as `Mandarin Chinese`, so the
+    /// table covers every ``MetaLanguage`` case plus the aliases that ISO 639
+    /// and BCP-47 both allow for the same language.
+    static let metaLanguagesByCode: [String: MetaLanguage] = [
+        "ar": .arabic,
+        "bn": .bengali,
+        "nl": .dutch,
+        "en": .english,
+        "fr": .french,
+        "de": .german,
+        "he": .hebrew,
+        "iw": .hebrew,
+        "hi": .hindi,
+        "id": .indonesian,
+        "in": .indonesian,
+        "it": .italian,
+        "ja": .japanese,
+        "kn": .kannada,
+        "ko": .korean,
+        "ms": .malay,
+        "zh": .mandarinChinese,
+        "cmn": .mandarinChinese,
+        "mr": .marathi,
+        "pl": .polish,
+        "pt": .portuguese,
+        "es": .spanish,
+        "tl": .tagalog,
+        "fil": .tagalog,
+        "ta": .tamil,
+        "te": .telugu,
+        "th": .thai,
+        "tr": .turkish,
+        "vi": .vietnamese
+    ]
+
+    /// Returns the Meta language bias for the requested codes.
+    ///
+    /// Region subtags are ignored, so `zh-CN` and `pt-BR` resolve the same way
+    /// as `zh` and `pt`.
+    ///
+    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when a code has no Meta name.
+    public static func meta(_ codes: [String]) throws -> [MetaLanguage] {
+        try codes.map { code in
+            let lowered = code.lowercased()
+            if let language = metaLanguagesByCode[lowered] ?? metaLanguagesByCode[baseCode(code)] {
+                return language
+            }
+            throw CLIError.invalidLanguage(
+                provider: .meta,
+                code: code,
+                valid: metaLanguagesByCode.keys.sorted()
+            )
         }
-        return nil
     }
 
-    /// Returns the Aqua language code for the first requested code.
+    /// Returns the Aqua language for the first requested code.
     ///
-    /// - Throws: ``CLIError/notImplemented(_:)`` until the Aqua runner lands.
-    public static func aqua(_ codes: [String]) throws -> String? {
-        guard codes.isEmpty else {
-            throw CLIError.notImplemented("--language for aqua")
+    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when Aqua has no matching case.
+    public static func aqua(_ codes: [String]) throws -> AquaLanguage? {
+        guard let code = codes.first, !code.isEmpty else { return nil }
+        if let language = AquaLanguage(rawValue: code.lowercased()) {
+            return language
         }
-        return nil
+        if let language = AquaLanguage(rawValue: baseCode(code)) {
+            return language
+        }
+        throw CLIError.invalidLanguage(
+            provider: .aqua,
+            code: code,
+            valid: AquaLanguage.allCases.map(\.rawValue).sorted()
+        )
     }
 
-    /// Returns the Cohere language code for the first requested code.
+    /// Returns the Cohere language for the first requested code.
     ///
-    /// - Throws: ``CLIError/notImplemented(_:)`` until the Cohere runner lands.
-    public static func cohere(_ codes: [String]) throws -> String? {
-        guard codes.isEmpty else {
-            throw CLIError.notImplemented("--language for cohere")
+    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when Cohere has no matching case.
+    public static func cohere(_ codes: [String]) throws -> CohereLanguage? {
+        guard let code = codes.first, !code.isEmpty else { return nil }
+        if let language = CohereLanguage(rawValue: code.lowercased()) {
+            return language
         }
-        return nil
+        if let language = CohereLanguage(rawValue: baseCode(code)) {
+            return language
+        }
+        throw CLIError.invalidLanguage(
+            provider: .cohere,
+            code: code,
+            valid: CohereLanguage.allCases.map(\.rawValue).sorted()
+        )
     }
 
     /// Reports that ElevenLabs Scribe detects the language itself.
@@ -94,6 +157,27 @@ public enum LanguageMapping {
     public static func elevenLabs(_ codes: [String]) throws {
         guard codes.isEmpty else {
             throw CLIError.invalidLanguage(provider: .elevenlabs, code: codes[0], valid: [])
+        }
+    }
+
+    /// Returns the values a provider accepts for `--language`.
+    ///
+    /// The result is `nil` when the provider takes any well-formed language
+    /// tag, and an empty array when it takes none at all.
+    public static func validValues(for provider: CLIProvider) -> [String]? {
+        switch provider {
+        case .grok:
+            return GrokLanguage.allCases.map(\.rawValue).sorted()
+        case .aqua:
+            return AquaLanguage.allCases.map(\.rawValue).sorted()
+        case .cohere:
+            return CohereLanguage.allCases.map(\.rawValue).sorted()
+        case .meta:
+            return metaLanguagesByCode.keys.sorted()
+        case .elevenlabs:
+            return []
+        case .openai, .gemini, .apple:
+            return nil
         }
     }
 }

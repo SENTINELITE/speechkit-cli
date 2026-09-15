@@ -50,23 +50,103 @@ struct LanguageMappingTests {
         #expect(LanguageMapping.apple([]) == nil)
     }
 
-    @Test("Providers arriving in later phases refuse language input")
-    func laterPhases() throws {
-        #expect(throws: CLIError.notImplemented("--language for gemini")) {
-            _ = try LanguageMapping.gemini(["en"])
+    @Test("Gemini passes BCP-47 tags through and drops empty entries")
+    func gemini() {
+        #expect(LanguageMapping.gemini(["en-US", "fr-FR"]) == ["en-US", "fr-FR"])
+        #expect(LanguageMapping.gemini(["", "  "]) == [])
+        #expect(LanguageMapping.gemini([]) == [])
+    }
+
+    @Test("Meta maps every language name in the enum")
+    func metaCoversEveryCase() throws {
+        let mapped = Set(LanguageMapping.metaLanguagesByCode.values)
+        #expect(mapped.count == MetaLanguage.allCases.count)
+        for language in MetaLanguage.allCases {
+            #expect(mapped.contains(language), "no code maps to \(language.rawValue)")
         }
-        #expect(throws: CLIError.notImplemented("--language for meta")) {
-            _ = try LanguageMapping.meta(["en"])
+    }
+
+    @Test("Meta accepts aliases and region subtags")
+    func metaAliases() throws {
+        #expect(try LanguageMapping.meta(["en"]) == [.english])
+        #expect(try LanguageMapping.meta(["en-GB"]) == [.english])
+        #expect(try LanguageMapping.meta(["zh"]) == [.mandarinChinese])
+        #expect(try LanguageMapping.meta(["cmn"]) == [.mandarinChinese])
+        #expect(try LanguageMapping.meta(["zh-CN"]) == [.mandarinChinese])
+        #expect(try LanguageMapping.meta(["tl"]) == [.tagalog])
+        #expect(try LanguageMapping.meta(["fil"]) == [.tagalog])
+        #expect(try LanguageMapping.meta(["id"]) == [.indonesian])
+        #expect(try LanguageMapping.meta(["in"]) == [.indonesian])
+        #expect(try LanguageMapping.meta(["ms"]) == [.malay])
+        #expect(try LanguageMapping.meta(["pt"]) == [.portuguese])
+        #expect(try LanguageMapping.meta(["pt-BR"]) == [.portuguese])
+        #expect(try LanguageMapping.meta(["iw"]) == [.hebrew])
+        #expect(try LanguageMapping.meta(["en", "fr"]) == [.english, .french])
+        #expect(try LanguageMapping.meta([]).isEmpty)
+    }
+
+    @Test("Meta reports the valid codes for an unmapped language")
+    func metaInvalid() {
+        do {
+            _ = try LanguageMapping.meta(["xx"])
+            Issue.record("expected a thrown error")
+        } catch let error as CLIError {
+            #expect(error.localizedDescription.contains("zh"))
+            #expect(error.localizedDescription.contains("fil"))
+            #expect(error.exitCode == 1)
+        } catch {
+            Issue.record("unexpected error \(error)")
         }
-        #expect(throws: CLIError.notImplemented("--language for aqua")) {
-            _ = try LanguageMapping.aqua(["en"])
+    }
+
+    @Test("Aqua takes raw values and falls back to the base code")
+    func aqua() throws {
+        #expect(try LanguageMapping.aqua(["en"]) == .english)
+        #expect(try LanguageMapping.aqua(["en-US"]) == .english)
+        #expect(try LanguageMapping.aqua(["auto"]) == .auto)
+        #expect(try LanguageMapping.aqua([]) == nil)
+        do {
+            _ = try LanguageMapping.aqua(["pt"])
+            Issue.record("expected a thrown error")
+        } catch let error as CLIError {
+            #expect(error.localizedDescription.contains("ja"))
+        } catch {
+            Issue.record("unexpected error \(error)")
         }
-        #expect(throws: CLIError.notImplemented("--language for cohere")) {
-            _ = try LanguageMapping.cohere(["en"])
+    }
+
+    @Test("Cohere takes raw values and falls back to the base code")
+    func cohere() throws {
+        #expect(try LanguageMapping.cohere(["pt-BR"]) == .portuguese)
+        #expect(try LanguageMapping.cohere(["ZH"]) == .chinese)
+        #expect(try LanguageMapping.cohere([]) == nil)
+        do {
+            _ = try LanguageMapping.cohere(["sv"])
+            Issue.record("expected a thrown error")
+        } catch let error as CLIError {
+            #expect(error.localizedDescription.contains("ko"))
+        } catch {
+            Issue.record("unexpected error \(error)")
         }
+    }
+
+    @Test("ElevenLabs refuses a language because Scribe detects it")
+    func elevenLabs() throws {
         #expect(throws: CLIError.self) {
             try LanguageMapping.elevenLabs(["en"])
         }
-        #expect(try LanguageMapping.gemini([]) == [])
+        try LanguageMapping.elevenLabs([])
+    }
+
+    @Test("Valid values are listed for enumerated providers and nil for free-form ones")
+    func validValues() {
+        #expect(LanguageMapping.validValues(for: .grok)?.contains("en") == true)
+        #expect(LanguageMapping.validValues(for: .aqua) == AquaLanguage.allCases.map(\.rawValue).sorted())
+        #expect(LanguageMapping.validValues(for: .cohere)?.count == CohereLanguage.allCases.count)
+        #expect(LanguageMapping.validValues(for: .meta)?.contains("cmn") == true)
+        #expect(LanguageMapping.validValues(for: .elevenlabs) == [])
+        #expect(LanguageMapping.validValues(for: .openai) == nil)
+        #expect(LanguageMapping.validValues(for: .gemini) == nil)
+        #expect(LanguageMapping.validValues(for: .apple) == nil)
     }
 }

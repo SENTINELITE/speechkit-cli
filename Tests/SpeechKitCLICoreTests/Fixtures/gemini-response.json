@@ -1,0 +1,21 @@
+{
+  "id": "interaction_1",
+  "status": "completed",
+  "detected_languages": ["en-US", "fr-FR"],
+  "steps": [
+    {
+      "content": [
+        {
+          "text": "Hello there. How are you?",
+          "annotations": [
+            { "type": "word_info", "text": "Hello", "start_offset": "0s", "end_offset": "0.42s", "speaker": "A" },
+            { "type": "word_info", "text": "there.", "start_offset": "0.42s", "end_offset": "0.95s", "speaker": "A" },
+            { "type": "word_info", "text": "How", "start_offset": "1.4s", "end_offset": "1.62s", "speaker": "B" },
+            { "type": "word_info", "text": "are", "start_offset": "1.62s", "end_offset": "1.8s", "speaker": "B" },
+            { "type": "word_info", "text": "you?", "start_offset": "1.8s", "end_offset": "2.2s", "speaker": "B" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "interaction_2",
+  "status": "completed",
+  "steps": [
+    {
+      "content": [
+        {
+          "text": "Hello there.",
+          "annotations": [
+            { "type": "word_info", "text": "Hello", "start_offset": "0s", "end_offset": "0.42s" },
+            { "type": "word_info", "text": "there.", "start_offset": "0.42s" }
+          ]
+        }
+      ]
+    }
+  ]
+}

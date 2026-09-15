@@ -1,0 +1,9 @@
+{
+  "sessionId": "session_1",
+  "transcript": "Hello there. How are you?",
+  "audioDurationMs": 3250,
+  "turns": [
+    { "turnId": 0, "startMs": 0, "endMs": 950, "transcript": " Hello there. ", "speaker": "speaker_0" },
+    { "turnId": 1, "startMs": 1400, "endMs": 2200, "transcript": "How are you?", "speaker": "speaker_1" }
+  ]
+}
