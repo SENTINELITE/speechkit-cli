@@ -65,20 +65,18 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         if jobs < 1 {
             throw ValidationError("--jobs must be at least 1.")
         }
-        if outputOptions.output != nil, outputOptions.stdout {
-            throw ValidationError("--output and --stdout cannot be combined.")
-        }
-        if outputOptions.outputDir != nil, outputOptions.output != nil {
-            throw ValidationError("--output-dir and --output cannot be combined.")
-        }
-        if outputOptions.outputDir != nil, outputOptions.stdout {
-            throw ValidationError("--output-dir and --stdout cannot be combined.")
-        }
-        if outputOptions.output != nil, files.count > 1 || formats.count > 1 {
-            throw ValidationError("--output takes one input file and one format.")
-        }
-        if outputOptions.stdout, files.count > 1 || formats.count > 1 {
-            throw ValidationError("--stdout takes one input file and one format.")
+        let severalOutputs = files.count > 1 || formats.count > 1
+        switch outputOptions.target {
+        case .standardOutput where severalOutputs:
+            throw ValidationError(
+                "Without --output, one input file and one format go to stdout. Pass --output <directory> to write several files."
+            )
+        case .file where severalOutputs:
+            throw ValidationError(
+                "--output names a single file, which takes one input file and one format. Pass a directory (end it with /) to write several."
+            )
+        default:
+            break
         }
         if let endpoint = transcription.endpoint, URL(string: endpoint) == nil {
             throw ValidationError("--endpoint is not a valid URL.")
@@ -151,9 +149,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         )
         let runner = try await ProviderRegistry.makeRunner(for: provider, context: context)
         let writer = OutputWriter(
-            outputDirectory: outputOptions.outputDir.map { URL(fileURLWithPath: $0, isDirectory: true) },
-            explicitOutput: outputOptions.output.map { URL(fileURLWithPath: $0) },
-            writesToStandardOutput: outputOptions.stdout,
+            target: outputOptions.target,
             overwrite: outputOptions.overwrite,
             console: console
         )
@@ -237,20 +233,18 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
 
     /// Rejects two inputs that would write over each other.
     ///
-    /// Outputs are named after the input stem, so `talk.wav` and `talk.m4a` in
-    /// one run both want `talk.txt`. Whichever finished last would win, so the
-    /// run is refused before any upload.
+    /// Outputs in a directory are named after the input stem, so `talk.wav`
+    /// and `talk.m4a` in one run both want `talk.txt`. Whichever finished last
+    /// would win, so the run is refused before any upload.
     ///
     /// - Throws: ``CLIError/usage(_:)`` naming both inputs and the shared path.
     func checkDestinationCollisions(_ inputs: [URL]) throws {
-        guard !outputOptions.stdout, outputOptions.output == nil else { return }
-        let directory = outputOptions.outputDir.map { URL(fileURLWithPath: $0, isDirectory: true) }
+        guard case .directory(let directory) = outputOptions.target else { return }
 
         var seen: [String: URL] = [:]
         for input in inputs {
             let stem = input.deletingPathExtension().lastPathComponent
-            let folder = directory ?? input.deletingLastPathComponent()
-            let key = folder.appendingPathComponent(stem).standardizedFileURL.path
+            let key = directory.appendingPathComponent(stem).standardizedFileURL.path
             if let first = seen[key] {
                 let format = outputOptions.resolvedFormats[0].rawValue
                 throw CLIError.usage(

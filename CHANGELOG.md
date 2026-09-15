@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-15
+
+Output goes to stdout by default.
+
+- `speechkit transcribe` prints the transcript to standard output unless
+  `--output` is passed. One input file and one format fit on stdout; more than
+  that is a usage error that points at `--output <directory>`.
+- `-o`, `--output` now takes either a directory (existing, or ending with `/`)
+  or a single file path. `--output-dir` and `--stdout` are gone.
+
 ## 0.3.1 — 2026-09-15
 
 Review fixes across option handling, output, and subtitles.

@@ -12,45 +12,40 @@ public struct OutputWriter: Sendable {
         case skipped(URL)
     }
 
-    private let outputDirectory: URL?
-    private let explicitOutput: URL?
-    private let writesToStandardOutput: Bool
+    private let target: OutputTarget
     private let overwrite: Bool
     private let console: Console
 
     /// Creates an output writer.
-    public init(
-        outputDirectory: URL?,
-        explicitOutput: URL?,
-        writesToStandardOutput: Bool,
-        overwrite: Bool,
-        console: Console
-    ) {
-        self.outputDirectory = outputDirectory
-        self.explicitOutput = explicitOutput
-        self.writesToStandardOutput = writesToStandardOutput
+    public init(target: OutputTarget, overwrite: Bool, console: Console) {
+        self.target = target
         self.overwrite = overwrite
         self.console = console
     }
 
-    /// Returns the path a rendered transcript would be written to.
-    public func destinationURL(for input: URL, fileExtension: String) -> URL {
-        if let explicitOutput { return explicitOutput }
-        let name = input.deletingPathExtension().lastPathComponent
-        let directory = outputDirectory ?? input.deletingLastPathComponent()
-        return directory.appendingPathComponent(name).appendingPathExtension(fileExtension)
+    /// Returns the path a rendered transcript would be written to, or `nil`
+    /// when it goes to standard output.
+    public func destinationURL(for input: URL, fileExtension: String) -> URL? {
+        switch target {
+        case .standardOutput:
+            return nil
+        case .file(let url):
+            return url
+        case .directory(let directory):
+            let name = input.deletingPathExtension().lastPathComponent
+            return directory.appendingPathComponent(name).appendingPathExtension(fileExtension)
+        }
     }
 
     /// Writes rendered text for one input file.
     ///
     /// - Throws: ``CLIError/writeFailed(_:reason:)`` when the file cannot be written.
     public func write(_ text: String, for input: URL, fileExtension: String) throws -> Destination {
-        if writesToStandardOutput {
+        guard let url = destinationURL(for: input, fileExtension: fileExtension) else {
             console.writeStandardOutput(text)
             return .standardOutput
         }
 
-        let url = destinationURL(for: input, fileExtension: fileExtension)
         let manager = FileManager.default
         if manager.fileExists(atPath: url.path), !overwrite {
             console.warning("\(url.path) exists; skipped. Pass --overwrite to replace it.")

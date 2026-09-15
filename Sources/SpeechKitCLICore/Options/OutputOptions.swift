@@ -42,17 +42,13 @@ public struct OutputOptions: ParsableArguments, Sendable {
     @Option(name: [.customShort("f"), .long], help: "Output format: txt, json, srt, or vtt. Repeatable.")
     public var format: [OutputFormat] = []
 
-    /// A directory to write outputs into.
-    @Option(name: [.customShort("o"), .long], help: "Write outputs into this directory.")
-    public var outputDir: String?
-
-    /// A single output path. Valid only with one input and one format.
-    @Option(name: .long, help: "Write to this path. Only with one input file and one format.")
+    /// Where to write. A directory takes any number of inputs and formats; a
+    /// file path takes one input and one format. Without it, output goes to stdout.
+    @Option(
+        name: [.customShort("o"), .long],
+        help: "Write to this directory, or to this file when there is one input and one format. Without it, output goes to stdout."
+    )
     public var output: String?
-
-    /// Writes to standard output. Valid only with one input and one format.
-    @Flag(name: .long, help: "Write to stdout. Only with one input file and one format.")
-    public var stdout: Bool = false
 
     /// Replaces existing output files instead of skipping them.
     @Flag(name: .long, help: "Replace existing output files.")
@@ -65,4 +61,28 @@ public struct OutputOptions: ParsableArguments, Sendable {
     public var resolvedFormats: [OutputFormat] {
         format.isEmpty ? [.txt] : format
     }
+
+    /// Where transcripts go, resolved from `--output`.
+    ///
+    /// A path is a directory when it already exists as one or ends with a
+    /// slash. Anything else is a single file path.
+    public var target: OutputTarget {
+        guard let output else { return .standardOutput }
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: output, isDirectory: &isDirectory)
+        if output.hasSuffix("/") || (exists && isDirectory.boolValue) {
+            return .directory(URL(fileURLWithPath: output, isDirectory: true))
+        }
+        return .file(URL(fileURLWithPath: output))
+    }
+}
+
+/// Where rendered transcripts go.
+public enum OutputTarget: Sendable, Equatable {
+    /// Standard output. The default.
+    case standardOutput
+    /// One file. Only valid with one input and one format.
+    case file(URL)
+    /// A directory holding `<input stem>.<format>` per input and format.
+    case directory(URL)
 }

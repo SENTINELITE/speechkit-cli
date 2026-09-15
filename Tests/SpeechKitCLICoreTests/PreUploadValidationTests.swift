@@ -97,7 +97,7 @@ struct PreUploadValidationTests {
         let file = try write(16, named: "clip.wav", in: directory)
 
         for provider in [CLIProvider.cohere, .aqua] {
-            let command = try Transcribe.parse([file.path, "-p", provider.rawValue, "-f", "srt", "-f", "vtt"])
+            let command = try Transcribe.parse([file.path, "-p", provider.rawValue, "-f", "srt", "-f", "vtt", "-o", directory.path + "/"])
             let error = #expect(throws: CLIError.self) {
                 _ = try command.validate(provider: provider, capabilities: .capabilities(for: provider))
             }
@@ -141,7 +141,7 @@ struct PreUploadValidationTests {
         let first = try write(16, named: "talk.wav", in: directory)
         let second = try write(16, named: "talk.mp3", in: directory)
 
-        let command = try Transcribe.parse([first.path, second.path, "-p", "openai"])
+        let command = try Transcribe.parse([first.path, second.path, "-p", "openai", "-o", directory.path + "/"])
         let error = #expect(throws: CLIError.self) {
             _ = try command.validate(provider: .openai, capabilities: .capabilities(for: .openai))
         }
@@ -151,7 +151,7 @@ struct PreUploadValidationTests {
         #expect(error?.localizedDescription.contains("talk.txt") == true)
     }
 
-    @Test("Different directories collide once --output-dir gathers them")
+    @Test("Different directories collide once a directory --output gathers them")
     func stemCollisionAcrossDirectories() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -162,24 +162,30 @@ struct PreUploadValidationTests {
         let first = try write(16, named: "talk.wav", in: left)
         let second = try write(16, named: "talk.wav", in: right)
 
-        let apart = try Transcribe.parse([first.path, second.path, "-p", "openai"])
-        #expect(try apart.validate(provider: .openai, capabilities: .capabilities(for: .openai)).count == 2)
-
         let together = try Transcribe.parse([
-            first.path, second.path, "-p", "openai", "-o", directory.appendingPathComponent("out").path,
+            first.path, second.path, "-p", "openai", "-o", directory.appendingPathComponent("out").path + "/",
         ])
         #expect(throws: CLIError.self) {
             _ = try together.validate(provider: .openai, capabilities: .capabilities(for: .openai))
         }
     }
 
-    @Test("--output-dir cannot be combined with --output or --stdout")
-    func outputDirExclusivity() {
+    @Test("Several outputs need a directory --output")
+    func severalOutputsNeedDirectory() {
         #expect(throws: (any Error).self) {
-            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-o", "/tmp/out", "--output", "/tmp/a.txt"])
+            _ = try Transcribe.parse(["a.wav", "b.wav", "-p", "grok"])
         }
         #expect(throws: (any Error).self) {
-            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-o", "/tmp/out", "--stdout"])
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "txt", "-f", "json"])
+        }
+        #expect(throws: (any Error).self) {
+            _ = try Transcribe.parse(["a.wav", "b.wav", "-p", "grok", "-o", "/tmp/one-file.txt"])
+        }
+        #expect(throws: Never.self) {
+            _ = try Transcribe.parse(["a.wav", "b.wav", "-p", "grok", "-f", "txt", "-f", "json", "-o", "/tmp/out/"])
+        }
+        #expect(throws: Never.self) {
+            _ = try Transcribe.parse(["a.wav", "-p", "grok"])
         }
     }
 
@@ -228,7 +234,7 @@ struct PreUploadValidationTests {
         let first = try write(16, named: "b.wav", in: directory)
         let second = try write(16, named: "a.wav", in: directory)
 
-        let command = try Transcribe.parse([first.path, second.path, "-p", "openai"])
+        let command = try Transcribe.parse([first.path, second.path, "-p", "openai", "-o", directory.path + "/"])
         #expect(try command.validate(provider: .openai, capabilities: .capabilities(for: .openai)) == [first, second])
     }
 }

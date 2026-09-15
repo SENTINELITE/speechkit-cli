@@ -92,10 +92,10 @@ credential was found on this machine right now (`env`, `keychain`, `none`, or
 speechkit transcribe interview.m4a --provider openai --language en --format vtt --words
 
 # Diarized SubRip for a directory of files, three uploads at a time
-speechkit transcribe *.wav --provider grok --format srt --diarize --output-dir ./subs --jobs 3
+speechkit transcribe *.wav --provider grok --format srt --diarize --output ./subs/ --jobs 3
 
 # On-device transcription, JSON piped into jq
-speechkit transcribe talk.mp3 --provider apple --language en-US --format json --stdout | jq .segments
+speechkit transcribe talk.mp3 --provider apple --language en-US --format json | jq .segments
 
 # Discovery
 speechkit providers
@@ -105,15 +105,18 @@ speechkit languages meta
 speechkit transcribe ./recordings/*.m4a \
   --provider gemini --language en-US \
   --format txt --format vtt \
-  --output-dir ./out --jobs 4 --verbose
+  --output ./out/ --jobs 4 --verbose
 ```
 
-Without `--output-dir`, `--output`, or `--stdout`, each transcript is written
-next to its input file as `<input stem>.<format>`. Existing files are skipped
-with a warning unless `--overwrite` is passed, and the progress line spells the
-skip out as `talk.txt (exists, skipped)`. Two inputs that share a stem, such as
-`talk.wav` and `talk.mp3` in one run, would write over each other, so the run is
-refused before any upload.
+Without `--output`, the transcript is printed to standard output. That works
+for one input file and one format; anything more needs a directory. Pass
+`--output` (or `-o`) with a directory to write `<input stem>.<format>` for each
+input and format, or with a file path to name a single output. A path counts as
+a directory when it already exists as one or ends with a slash. Existing files
+are skipped with a warning unless `--overwrite` is passed, and the progress line
+spells the skip out as `talk.txt (exists, skipped)`. Two inputs that share a
+stem, such as `talk.wav` and `talk.mp3` in one run, would write over each other
+in a directory, so the run is refused before any upload.
 
 ## `speechkit transcribe` flags
 
@@ -131,9 +134,7 @@ refused before any upload.
 | `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. On OpenAI it selects `whisper-1`, the only model that returns them. |
 | `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, and Apple. On OpenAI it selects `gpt-4o-transcribe-diarize`. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
-| `-o`, `--output-dir` | directory | next to the input | Created if missing. Cannot be combined with `--output` or `--stdout`. |
-| `--output` | file path | — | One input file and one format only. |
-| `--stdout` | flag | off | One input file and one format only. Cannot be combined with `--output`. |
+| `-o`, `--output` | directory or file path | stdout | A directory (existing, or ending with `/`) takes any number of inputs and formats and is created if missing. A file path takes one input and one format. |
 | `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
 | `--cues` | `segments`, `words` | `segments` | `words` writes one cue per word in SRT and VTT. |
 | `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
@@ -241,8 +242,8 @@ times.
 | 2 | At least one file failed while others succeeded; the successful transcripts are still written and the failures are listed on stderr. |
 | 3 | No credential for the provider, `--provider apple` on macOS 15, or a keychain failure. |
 
-Transcripts go to standard output only with `--stdout`. Progress, warnings, and
-errors always go to standard error, so the tool stays pipeable.
+Transcripts go to standard output unless `--output` is passed. Progress,
+warnings, and errors always go to standard error, so the tool stays pipeable.
 
 ## Shell completion
 

@@ -12,7 +12,7 @@ struct TranscribeParsingTests {
             "--language", "en", "--language", "fr",
             "--model", "gpt-transcribe",
             "--format", "txt", "--format", "json",
-            "--output-dir", "/tmp/out",
+            "--output", "/tmp/out/",
             "--overwrite",
             "--api-key", "sk-test",
             "--endpoint", "https://proxy.example.com/v1/audio/transcriptions",
@@ -33,7 +33,7 @@ struct TranscribeParsingTests {
         #expect(command.transcription.language == ["en", "fr"])
         #expect(command.transcription.model == "gpt-transcribe")
         #expect(command.outputOptions.resolvedFormats == [.txt, .json])
-        #expect(command.outputOptions.outputDir == "/tmp/out")
+        #expect(command.outputOptions.output == "/tmp/out/")
         #expect(command.outputOptions.overwrite)
         #expect(command.transcription.apiKey == "sk-test")
         #expect(command.transcription.timeout == 120)
@@ -71,7 +71,7 @@ struct TranscribeParsingTests {
     @Test("Subtitle formats parse and keep their cue limits")
     func subtitleFormats() throws {
         let command = try Transcribe.parse([
-            "a.wav", "-p", "grok", "-f", "srt", "-f", "vtt",
+            "a.wav", "-p", "grok", "-f", "srt", "-f", "vtt", "-o", "/tmp/out/",
             "--max-cue-duration", "4.5", "--max-cue-chars", "60",
         ])
         #expect(command.outputOptions.resolvedFormats == [.srt, .vtt])
@@ -137,7 +137,7 @@ struct TranscribeParsingTests {
             _ = try Transcribe.parse(["a.wav", "b.wav", "-p", "grok", "--output", "/tmp/a.txt"])
         }
         #expect(throws: (any Error).self) {
-            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "txt", "-f", "json", "--stdout"])
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "txt", "-f", "json", "--output", "/tmp/a.txt"])
         }
     }
 
