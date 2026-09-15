@@ -5,8 +5,6 @@ import Foundation
 public enum CredentialSource: String, Sendable, Codable, Equatable {
     /// The provider needs no credential.
     case notNeeded = "not needed"
-    /// `--api-key` decides, so nothing can be reported ahead of a run.
-    case flag
     /// A `SPEECHKIT_<PROVIDER>_API_KEY` variable is set.
     case environment = "env"
     /// A key is stored in the keychain.

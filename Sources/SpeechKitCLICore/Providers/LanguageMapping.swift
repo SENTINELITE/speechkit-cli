@@ -151,15 +151,6 @@ public enum LanguageMapping {
         )
     }
 
-    /// Reports that ElevenLabs Scribe detects the language itself.
-    ///
-    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when a code is given.
-    public static func elevenLabs(_ codes: [String]) throws {
-        guard codes.isEmpty else {
-            throw CLIError.invalidLanguage(provider: .elevenlabs, code: codes[0], valid: [])
-        }
-    }
-
     /// Returns the values a provider accepts for `--language`.
     ///
     /// The result is `nil` when the provider takes any well-formed language

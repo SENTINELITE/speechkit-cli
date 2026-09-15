@@ -59,7 +59,7 @@ public struct VTTFormatter: TranscriptFormatter {
         var cues: [String] = []
 
         for (index, segment) in document.segments.enumerated() {
-            let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = Self.escaped(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
             guard !text.isEmpty else { continue }
             let timing = TimecodeFormatter.range(start: segment.start, end: segment.end, style: .vtt)
             let prefix = showSpeakers ? (labels[index].map { "<v \($0)>" } ?? "") : ""
@@ -83,15 +83,40 @@ public struct VTTFormatter: TranscriptFormatter {
     }
 
     /// Returns the `NOTE` block naming the provider, model, and language.
+    ///
+    /// A `NOTE` block runs until the next blank line, and `-->` inside one would
+    /// read as a cue timing, so both are taken out of the values.
     private func note(for document: TranscriptDocument) -> String {
-        var lines = ["NOTE", "provider: \(document.provider)"]
+        var lines = ["NOTE", "provider: \(Self.sanitizedNote(document.provider))"]
         if let model = document.model {
-            lines.append("model: \(model)")
+            lines.append("model: \(Self.sanitizedNote(model))")
         }
         if let language = document.language {
-            lines.append("language: \(language)")
+            lines.append("language: \(Self.sanitizedNote(language))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Returns cue text with the three characters WebVTT reads as markup escaped.
+    ///
+    /// This runs before the voice span and the inline timing tags are added, so
+    /// `AT&T` and `<inaudible>` reach the player as text while `<v A>` and
+    /// `<00:00:01.900>` stay markup.
+    static func escaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    /// Returns a `NOTE` value with line breaks and cue arrows removed.
+    static func sanitizedNote(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "-->", with: "--")
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
     }
 
     /// Returns the cue body with inline word timing tags, or `nil` when the cue
@@ -110,7 +135,7 @@ public struct VTTFormatter: TranscriptFormatter {
 
         var pieces: [String] = []
         for (index, word) in inside.enumerated() {
-            let text = word.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = Self.escaped(word.text.trimmingCharacters(in: .whitespacesAndNewlines))
             guard !text.isEmpty else { continue }
             guard index > 0, let start = word.start else {
                 pieces.append(text)

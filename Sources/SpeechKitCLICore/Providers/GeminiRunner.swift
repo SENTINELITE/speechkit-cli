@@ -16,7 +16,7 @@ public struct GeminiRunner: ProviderRunner {
     /// Checks the model and language before any upload starts.
     ///
     /// - Throws: ``CLIError`` when `--model` or `--language` is not one Gemini accepts.
-    public func validate() throws {
+    public func validate() async throws {
         _ = try resolvedModelID()
         _ = LanguageMapping.gemini(context.languages)
     }
@@ -26,11 +26,7 @@ public struct GeminiRunner: ProviderRunner {
         let credential = try context.requireCredential(for: Self.provider)
         let modelID = try resolvedModelID()
         let languageCodes = LanguageMapping.gemini(context.languages)
-        var warnings: [String] = []
-
-        if context.prompt != nil {
-            warnings.append("Gemini has no prompt parameter; --prompt was dropped.")
-        }
+        var warnings = RunnerSupport.droppedOptionWarnings(prompt: context.prompt, for: Self.provider)
 
         // Gemini rejects a custom vocabulary combined with diarization or word
         // timestamps, so the keywords are dropped rather than failing the run.
@@ -63,21 +59,13 @@ public struct GeminiRunner: ProviderRunner {
             response,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
-            warnings: warnings
+            warnings: warnings,
+            cueBuilder: context.cueBuilder
         )
     }
 
     private func resolvedModelID() throws -> GeminiFileTranscriptionModelID {
-        guard let model = context.model else { return .transcribe35 }
-        guard let modelID = GeminiFileTranscriptionModelID(rawValue: model) else {
-            throw CLIError.invalidModel(
-                provider: .gemini,
-                model: model,
-                valid: GeminiFileTranscriptionModelID.allCases.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(context.model, default: .transcribe35, provider: Self.provider)
     }
 
     @MainActor
@@ -99,13 +87,10 @@ public struct GeminiRunner: ProviderRunner {
         _ response: GeminiFileTranscriptionResponse,
         file: URL,
         modelID: GeminiFileTranscriptionModelID,
-        includeRaw: Bool = false,
-        warnings: [String] = []
+        warnings: [String] = [],
+        cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
         var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
 
         let words = response.words.map { word in
             TranscriptDocument.Word(
@@ -117,7 +102,7 @@ public struct GeminiRunner: ProviderRunner {
         }
 
         let duration = words.compactMap { $0.end ?? $0.start }.max()
-        let segments = SentenceSegmenter.segments(
+        let segments = cueBuilder.segments(
             from: words,
             fallbackText: response.text,
             duration: duration

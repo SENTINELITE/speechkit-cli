@@ -11,8 +11,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case usage(String)
     /// No provider was given on the command line or in the environment.
     case missingProvider
-    /// A feature that a later phase implements was requested.
-    case notImplemented(String)
     /// The provider cannot do what the flags asked for.
     case unsupportedCapability(provider: CLIProvider, capability: String)
     /// The model identifier is not one the provider accepts.
@@ -29,8 +27,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case unsupportedFileExtension(URL, accepted: [String])
     /// The input file is larger than the provider accepts.
     case fileTooLarge(URL, limit: Int64)
-    /// An output file exists and `--overwrite` was not passed.
-    case outputExists(URL)
     /// Writing an output file failed.
     case writeFailed(URL, reason: String)
     /// Transcribing one input file failed.
@@ -53,8 +49,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return message
         case .missingProvider:
             return "No provider. Pass --provider or set SPEECHKIT_PROVIDER."
-        case .notImplemented(let what):
-            return "\(what) is not implemented in this phase."
         case .unsupportedCapability(let provider, let capability):
             return "\(provider.rawValue) does not support \(capability)."
         case .invalidModel(let provider, let model, let valid):
@@ -75,8 +69,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return "\(url.lastPathComponent) has \(name), which the provider does not accept. Accepted: \(accepted.map { ".\($0)" }.joined(separator: ", "))."
         case .fileTooLarge(let url, let limit):
             return "\(url.lastPathComponent) is larger than the provider limit of \(limit) bytes."
-        case .outputExists(let url):
-            return "\(url.path) exists. Pass --overwrite to replace it."
         case .writeFailed(let url, let reason):
             return "Failed to write \(url.path): \(reason)"
         case .transcriptionFailed(let file, let reason):
@@ -101,7 +93,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case .usage,
              .missingProvider,
-             .notImplemented,
              .unsupportedCapability,
              .invalidModel,
              .invalidLanguage,
@@ -110,7 +101,6 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
              .fileUnreadable,
              .unsupportedFileExtension,
              .fileTooLarge,
-             .outputExists,
              .noTimingData,
              .subtitlesUnsupported:
             return 1

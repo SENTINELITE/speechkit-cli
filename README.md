@@ -110,7 +110,10 @@ speechkit transcribe ./recordings/*.m4a \
 
 Without `--output-dir`, `--output`, or `--stdout`, each transcript is written
 next to its input file as `<input stem>.<format>`. Existing files are skipped
-with a warning unless `--overwrite` is passed.
+with a warning unless `--overwrite` is passed, and the progress line spells the
+skip out as `talk.txt (exists, skipped)`. Two inputs that share a stem, such as
+`talk.wav` and `talk.mp3` in one run, would write over each other, so the run is
+refused before any upload.
 
 ## `speechkit transcribe` flags
 
@@ -119,16 +122,16 @@ with a warning unless `--overwrite` is passed.
 | `<files>` | one or more paths | — | Globs are expanded by the shell. A directory is rejected with a hint to use a glob. |
 | `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `apple` | `SPEECHKIT_PROVIDER` | Case-insensitive. Required when the variable is unset. |
 | `-l`, `--language` | language code | provider default | Repeatable. Only OpenAI and Gemini use more than the first value. |
-| `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. |
+| `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. Ignored by Apple, which has none. |
 | `--api-key` | string | — | Overrides the environment and keychain for this run. |
 | `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple. |
 | `--timeout` | seconds | 600 | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, and Apple. |
 | `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
 | `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs. |
-| `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. |
-| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, and Apple. |
+| `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. On OpenAI it selects `whisper-1`, the only model that returns them. |
+| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, and Apple. On OpenAI it selects `gpt-4o-transcribe-diarize`. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
-| `-o`, `--output-dir` | directory | next to the input | Created if missing. |
+| `-o`, `--output-dir` | directory | next to the input | Created if missing. Cannot be combined with `--output` or `--stdout`. |
 | `--output` | file path | — | One input file and one format only. |
 | `--stdout` | flag | off | One input file and one format only. Cannot be combined with `--output`. |
 | `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
@@ -136,17 +139,22 @@ with a warning unless `--overwrite` is passed.
 | `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
 | `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
 | `-j`, `--jobs` | integer | `2` | Concurrent uploads. Values above 8 are capped with a warning. |
-| `--raw` | flag | off | Ask for the provider's raw response in JSON. Not yet available for any provider; it adds a warning instead. |
-| `-v`, `--verbose` | flag | off | Per-file progress, timing, and per-provider notes to stderr. |
+| `-v`, `--verbose` | flag | off | Per-file progress and timing to stderr. Per-provider notes print without it. |
 | `-q`, `--quiet` | flag | off | Suppress warnings and progress. Cannot be combined with `--verbose`. |
 
 `transcribe` is the default subcommand, so `speechkit talk.wav -p openai` works.
 
 Everything that can be checked without an upload is checked first: the provider
 supports the requested capabilities, the model and language are valid for the
-provider, the input exists and is readable, its extension is one the provider
+provider and match the flags asked for, no two inputs would write to the same
+path, the input exists and is readable, its extension is one the provider
 accepts, and its size is under the provider's limit. Anything wrong there exits
 with code 1 before a byte leaves the machine.
+
+`--format srt` and `--format vtt` need timings, so with Grok, Gemini, OpenAI, or
+ElevenLabs the upload asks for word timestamps whether or not `--words` was
+passed. On OpenAI that means the run uses `whisper-1` unless `--model` says
+otherwise, because OpenAI returns word timestamps from no other model.
 
 ## Providers
 
@@ -177,16 +185,16 @@ matching against a fixed list, so `pt-BR` and `pt` resolve the same way.
 ### Flags dropped per provider
 
 Flags that a provider cannot use are dropped rather than failing the run. The
-note appears on stderr only with `--verbose`, and in the `warnings` array of
-JSON output always.
+note appears on stderr and in the `warnings` array of JSON output. With more
+than one input file, the note is prefixed with the file it came from.
 
 | Provider | Dropped |
 | --- | --- |
 | `elevenlabs` | `--language` (Scribe detects the language itself), `--timeout`, `--prompt`, `--keyword` |
 | `aqua` | `--timeout`, `--prompt`, `--keyword` |
 | `cohere` | `--timeout`, `--prompt`, `--keyword` |
-| `grok` | none |
-| `openai` | none |
+| `grok` | `--prompt`, `--keyword` |
+| `openai` | `--prompt` under `gpt-4o-transcribe-diarize`, which takes none |
 | `meta` | `--prompt` |
 | `gemini` | `--prompt`; `--keyword` is dropped when combined with `--diarize` or `--words`, which Gemini rejects |
 | `apple` | `--model`, `--endpoint`, `--timeout`, `--prompt` |

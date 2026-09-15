@@ -25,7 +25,7 @@ public struct ElevenLabsRunner: ProviderRunner {
     /// Checks the model before any upload starts.
     ///
     /// - Throws: ``CLIError`` when `--model` is not an ElevenLabs file model.
-    public func validate() throws {
+    public func validate() async throws {
         _ = try resolvedModelID()
     }
 
@@ -38,15 +38,12 @@ public struct ElevenLabsRunner: ProviderRunner {
         if !context.languages.isEmpty {
             warnings.append("ElevenLabs Scribe detects the language itself; --language was ignored.")
         }
-        if context.timeout != nil {
-            warnings.append("SpeechKit's ElevenLabs client takes no request timeout; --timeout was dropped.")
-        }
-        if context.prompt != nil {
-            warnings.append("ElevenLabs has no prompt parameter; --prompt was dropped.")
-        }
-        if !context.keywords.isEmpty {
-            warnings.append("ElevenLabs has no vocabulary parameter; --keyword was dropped.")
-        }
+        warnings += RunnerSupport.droppedOptionWarnings(
+            prompt: context.prompt,
+            keywords: context.keywords,
+            timeout: context.timeout,
+            for: Self.provider
+        )
 
         let configuration = ElevenLabsConfiguration(
             credential: credential,
@@ -58,21 +55,18 @@ public struct ElevenLabsRunner: ProviderRunner {
             response,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
-            warnings: warnings
+            warnings: warnings,
+            cueBuilder: context.cueBuilder
         )
     }
 
     private func resolvedModelID() throws -> ElevenLabsModelID {
-        guard let model = context.model else { return .scribeV1 }
-        guard let modelID = ElevenLabsModelID(rawValue: model), Self.fileModelIDs.contains(modelID) else {
-            throw CLIError.invalidModel(
-                provider: .elevenlabs,
-                model: model,
-                valid: Self.fileModelIDs.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(
+            context.model,
+            default: .scribeV1,
+            provider: Self.provider,
+            allowed: Self.fileModelIDs
+        )
     }
 
     @MainActor
@@ -93,13 +87,10 @@ public struct ElevenLabsRunner: ProviderRunner {
         _ response: ElevenLabsFileTranscriptionResponse,
         file: URL,
         modelID: ElevenLabsModelID,
-        includeRaw: Bool = false,
-        warnings: [String] = []
+        warnings: [String] = [],
+        cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
         var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
 
         let tokens = response.words ?? []
         let words = tokens
@@ -115,7 +106,7 @@ public struct ElevenLabsRunner: ProviderRunner {
             .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
 
         let duration = tokens.map(\.end).max()
-        let segments = SentenceSegmenter.segments(
+        let segments = cueBuilder.segments(
             from: words,
             fallbackText: response.text,
             duration: duration

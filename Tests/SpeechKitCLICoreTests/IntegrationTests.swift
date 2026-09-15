@@ -4,10 +4,12 @@ import Testing
 
 /// Live transcriptions against the real provider APIs.
 ///
-/// Every test here is disabled unless the matching credential is in the
-/// environment, so a plain `swift test` skips the whole suite rather than
-/// failing on a missing key or a network hop. Audio is synthesised on the fly
-/// with `say` and `afconvert`, so the repository carries no media fixtures.
+/// Every cloud test here is disabled unless the matching credential is in the
+/// environment, so a plain `swift test` skips them rather than failing on a
+/// missing key or a network hop. Apple transcribes on device in about a second
+/// and costs nothing, so it runs whenever the operating system supports it.
+/// Audio is synthesised on the fly with `say` and `afconvert`, so the
+/// repository carries no media fixtures.
 @Suite("Integration", .serialized)
 struct IntegrationTests {
     /// A 16 kHz mono WAV of spoken text, and the directory holding it.
@@ -30,9 +32,10 @@ struct IntegrationTests {
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Returns `true` when the on-device test was asked for explicitly.
-    static var wantsLocalIntegration: Bool {
-        ProcessInfo.processInfo.environment["SPEECHKIT_INTEGRATION"] == "1"
+    /// Returns `true` when this machine has Apple's local speech analyzer.
+    static var hasAppleTranscriber: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
     }
 
     /// Speaks `phrase` into a 16 kHz mono WAV file.
@@ -83,7 +86,7 @@ struct IntegrationTests {
             languages: languages,
             wantsWords: wantsWords
         )
-        let runner = try ProviderRegistry.makeRunner(for: provider, context: context)
+        let runner = try await ProviderRegistry.makeRunner(for: provider, context: context)
         return try await runner.transcribe(file: sample.url)
     }
 
@@ -131,7 +134,7 @@ struct IntegrationTests {
 
     @Test(
         "Apple transcribes a spoken sample on device",
-        .enabled(if: IntegrationTests.wantsLocalIntegration)
+        .enabled(if: IntegrationTests.hasAppleTranscriber)
     )
     func apple() async throws {
         guard #available(macOS 26.0, *) else { return }

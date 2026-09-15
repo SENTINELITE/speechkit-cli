@@ -16,7 +16,7 @@ public struct CohereRunner: ProviderRunner {
     /// Checks the model and language before any upload starts.
     ///
     /// - Throws: ``CLIError`` when `--model` or `--language` is not one Cohere accepts.
-    public func validate() throws {
+    public func validate() async throws {
         _ = try resolvedModelID()
         _ = try LanguageMapping.cohere(context.languages)
     }
@@ -29,17 +29,12 @@ public struct CohereRunner: ProviderRunner {
         let credential = try context.requireCredential(for: Self.provider)
         let modelID = try resolvedModelID()
         let language = try LanguageMapping.cohere(context.languages)
-        var warnings: [String] = []
-
-        if context.timeout != nil {
-            warnings.append("SpeechKit's Cohere client takes no request timeout; --timeout was dropped.")
-        }
-        if context.prompt != nil {
-            warnings.append("Cohere has no prompt parameter; --prompt was dropped.")
-        }
-        if !context.keywords.isEmpty {
-            warnings.append("Cohere has no vocabulary parameter; --keyword was dropped.")
-        }
+        let warnings = RunnerSupport.droppedOptionWarnings(
+            prompt: context.prompt,
+            keywords: context.keywords,
+            timeout: context.timeout,
+            for: Self.provider
+        )
 
         let configuration = CohereConfiguration(
             credential: credential,
@@ -56,21 +51,12 @@ public struct CohereRunner: ProviderRunner {
             text,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
             warnings: warnings
         )
     }
 
     private func resolvedModelID() throws -> CohereModelID {
-        guard let model = context.model else { return .transcribe032026 }
-        guard let modelID = CohereModelID(rawValue: model) else {
-            throw CLIError.invalidModel(
-                provider: .cohere,
-                model: model,
-                valid: CohereModelID.allCases.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(context.model, default: .transcribe032026, provider: Self.provider)
     }
 
     @MainActor
@@ -91,13 +77,9 @@ public struct CohereRunner: ProviderRunner {
         _ text: String,
         file: URL,
         modelID: CohereModelID,
-        includeRaw: Bool = false,
         warnings: [String] = []
     ) -> TranscriptDocument {
         var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
         warnings.append("Cohere returns text only; the transcript is one untimed segment.")
 
         return TranscriptDocument(
@@ -107,7 +89,7 @@ public struct CohereRunner: ProviderRunner {
             text: text,
             language: nil,
             duration: nil,
-            segments: SentenceSegmenter.segments(from: [], fallbackText: text, duration: nil),
+            segments: CueBuilder().segments(from: [], fallbackText: text, duration: nil),
             words: [],
             warnings: warnings
         )

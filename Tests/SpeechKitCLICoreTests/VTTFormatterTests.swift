@@ -57,6 +57,58 @@ struct VTTFormatterTests {
         }
     }
 
+    @Test("Ampersands and angle brackets in cue text are escaped")
+    func escapesCueText() throws {
+        var document = SubtitleSample.document
+        document.words = []
+        document.segments = [
+            TranscriptDocument.Segment(start: 0, end: 1, text: "AT&T called", speaker: "0"),
+            TranscriptDocument.Segment(start: 1, end: 2, text: "<inaudible> then silence", speaker: "1"),
+        ]
+        let rendered = try VTTFormatter(showSpeakers: true).render(document)
+
+        #expect(rendered.contains("AT&amp;T called"))
+        #expect(rendered.contains("&lt;inaudible&gt; then silence"))
+        #expect(rendered.contains("<v A>AT&amp;T called"))
+        // The voice span is still markup rather than escaped text.
+        #expect(rendered.contains("&lt;v ") == false)
+    }
+
+    @Test("Inline word timing tags escape the word text but not the tag")
+    func escapesTaggedWords() throws {
+        let document = TranscriptDocument(
+            provider: "grok",
+            sourceFile: "/tmp/a.wav",
+            text: "AT&T <inaudible> today",
+            segments: [TranscriptDocument.Segment(start: 0, end: 3, text: "AT&T <inaudible> today")],
+            words: [
+                TranscriptDocument.Word(text: "AT&T", start: 0, end: 1),
+                TranscriptDocument.Word(text: "<inaudible>", start: 1, end: 2),
+                TranscriptDocument.Word(text: "today", start: 2, end: 3),
+            ]
+        )
+        let rendered = try VTTFormatter(showWordTimings: true).render(document)
+
+        #expect(rendered.contains("AT&amp;T <00:00:01.000>&lt;inaudible&gt; <00:00:02.000>today"))
+    }
+
+    @Test("A NOTE value loses its line breaks and cue arrows")
+    func sanitizesNote() throws {
+        let document = TranscriptDocument(
+            provider: "grok",
+            model: "evil\nmodel",
+            sourceFile: "/tmp/a.wav",
+            text: "Hello",
+            language: "en --> 00:00:05.000",
+            segments: [TranscriptDocument.Segment(start: 0, end: 1, text: "Hello")]
+        )
+        let rendered = try VTTFormatter().render(document)
+        let note = rendered.components(separatedBy: "\n\n")[1]
+
+        #expect(note == "NOTE\nprovider: grok\nmodel: evil model\nlanguage: en -- 00:00:05.000")
+        #expect(note.components(separatedBy: "\n").count == 4)
+    }
+
     @Test("Output is UTF-8 with LF line endings")
     func encoding() throws {
         let rendered = try VTTFormatter(showSpeakers: true, showWordTimings: true).render(SubtitleSample.document)

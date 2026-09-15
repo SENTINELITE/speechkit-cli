@@ -56,7 +56,7 @@ public struct LanguageReport: Sendable, Codable, Equatable {
             return LanguageReport(
                 provider: provider.rawValue,
                 style: style,
-                note: "elevenlabs Scribe detects the language itself; --language is rejected.",
+                note: "elevenlabs Scribe detects the language itself; --language is ignored with a warning.",
                 values: []
             )
         case .apple:

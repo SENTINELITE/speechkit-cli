@@ -130,12 +130,9 @@ struct LanguageMappingTests {
         }
     }
 
-    @Test("ElevenLabs refuses a language because Scribe detects it")
-    func elevenLabs() throws {
-        #expect(throws: CLIError.self) {
-            try LanguageMapping.elevenLabs(["en"])
-        }
-        try LanguageMapping.elevenLabs([])
+    @Test("ElevenLabs takes no language at all, so it lists no values")
+    func elevenLabs() {
+        #expect(LanguageMapping.validValues(for: .elevenlabs) == [])
     }
 
     @Test("Valid values are listed for enumerated providers and nil for free-form ones")

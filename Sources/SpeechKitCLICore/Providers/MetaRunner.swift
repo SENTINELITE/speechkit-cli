@@ -16,7 +16,7 @@ public struct MetaRunner: ProviderRunner {
     /// Checks the model and language before any upload starts.
     ///
     /// - Throws: ``CLIError`` when `--model` or `--language` is not one Meta accepts.
-    public func validate() throws {
+    public func validate() async throws {
         _ = try resolvedModelID()
         _ = try LanguageMapping.meta(context.languages)
     }
@@ -26,14 +26,7 @@ public struct MetaRunner: ProviderRunner {
         let credential = try context.requireCredential(for: Self.provider)
         let modelID = try resolvedModelID()
         let languageBias = try LanguageMapping.meta(context.languages)
-        var warnings: [String] = []
-
-        if context.prompt != nil {
-            warnings.append("Meta has no prompt parameter; --prompt was dropped.")
-        }
-        if context.wantsWords {
-            warnings.append("Meta returns turns rather than words; --words produced no word timings.")
-        }
+        let warnings = RunnerSupport.droppedOptionWarnings(prompt: context.prompt, for: Self.provider)
 
         let mode: MetaTranscriptionMode = context.wantsDiarization ? .diarization : .endpointing
         let timeout = context.timeout ?? 10 * 60
@@ -58,21 +51,12 @@ public struct MetaRunner: ProviderRunner {
             response,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
             warnings: warnings
         )
     }
 
     private func resolvedModelID() throws -> MetaModelID {
-        guard let model = context.model else { return .museVoiceTranscribe1 }
-        guard let modelID = MetaModelID(rawValue: model) else {
-            throw CLIError.invalidModel(
-                provider: .meta,
-                model: model,
-                valid: MetaModelID.allCases.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(context.model, default: .museVoiceTranscribe1, provider: Self.provider)
     }
 
     @MainActor
@@ -93,28 +77,26 @@ public struct MetaRunner: ProviderRunner {
         _ response: MetaFileTranscriptionResponse,
         file: URL,
         modelID: MetaModelID,
-        includeRaw: Bool = false,
         warnings: [String] = []
     ) -> TranscriptDocument {
         var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
 
         let duration = response.audioDurationMs.map { Double($0) / 1000 }
         let turns = response.turns ?? []
-        var segments = turns.map { turn in
-            TranscriptDocument.Segment(
-                start: Double(turn.startMs) / 1000,
-                end: Double(turn.endMs) / 1000,
-                text: turn.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
-                speaker: turn.speaker
-            )
-        }
-        .filter { !$0.text.isEmpty }
+        var segments = RunnerSupport.orderedSegments(
+            turns.map { turn in
+                TranscriptDocument.Segment(
+                    start: Double(turn.startMs) / 1000,
+                    end: Double(turn.endMs) / 1000,
+                    text: turn.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+                    speaker: turn.speaker
+                )
+            }
+            .filter { !$0.text.isEmpty }
+        )
 
         if segments.isEmpty {
-            segments = SentenceSegmenter.segments(from: [], fallbackText: response.text, duration: duration)
+            segments = CueBuilder().segments(from: [], fallbackText: response.text, duration: duration)
             warnings.append("Meta returned no turns; the transcript is one untimed segment.")
         }
 

@@ -40,10 +40,6 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     @Option(name: [.customShort("j"), .long], help: "Concurrent uploads, capped at 8.")
     public var jobs: Int = 2
 
-    /// Includes the provider's raw response in JSON output.
-    @Flag(name: .long, help: "Include the provider's raw response in JSON output.")
-    public var raw: Bool = false
-
     /// Global verbosity flags.
     @OptionGroup public var globals: GlobalOptions
 
@@ -72,6 +68,12 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         if outputOptions.output != nil, outputOptions.stdout {
             throw ValidationError("--output and --stdout cannot be combined.")
         }
+        if outputOptions.outputDir != nil, outputOptions.output != nil {
+            throw ValidationError("--output-dir and --output cannot be combined.")
+        }
+        if outputOptions.outputDir != nil, outputOptions.stdout {
+            throw ValidationError("--output-dir and --stdout cannot be combined.")
+        }
         if outputOptions.output != nil, files.count > 1 || formats.count > 1 {
             throw ValidationError("--output takes one input file and one format.")
         }
@@ -84,6 +86,25 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         if let timeout = transcription.timeout, timeout <= 0 {
             throw ValidationError("--timeout must be greater than zero.")
         }
+        if let hint = Self.subcommandHint(for: files) {
+            throw ValidationError(hint)
+        }
+    }
+
+    /// Returns a hint when a positional argument reads like a mistyped subcommand.
+    ///
+    /// `transcribe` is the default subcommand, so `speechkit bogus` parses as a
+    /// file to transcribe and would otherwise fail with "No provider", which
+    /// says nothing about the real mistake. A bare word with no extension and no
+    /// path separator that does not exist on disk is almost always a subcommand.
+    static func subcommandHint(for files: [String]) -> String? {
+        let manager = FileManager.default
+        for file in files {
+            guard !manager.fileExists(atPath: file) else { continue }
+            guard !file.contains("/"), URL(fileURLWithPath: file).pathExtension.isEmpty else { continue }
+            return "'\(file)' is not a file. If you meant a subcommand, run 'speechkit --help'."
+        }
+        return nil
     }
 
     /// The outcome of transcribing one file.
@@ -118,14 +139,17 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             timeout: transcription.timeout,
             prompt: transcription.prompt,
             keywords: transcription.keyword,
-            wantsWords: transcription.words,
+            wantsWords: Self.wantsWords(
+                requested: transcription.words,
+                formats: outputOptions.resolvedFormats,
+                provider: provider
+            ),
             wantsDiarization: transcription.diarize,
-            includeRaw: raw,
             maxCueDuration: maxCueDuration,
             maxCueChars: maxCueChars,
             cueMode: cues
         )
-        let runner = try ProviderRegistry.makeRunner(for: provider, context: context)
+        let runner = try await ProviderRegistry.makeRunner(for: provider, context: context)
         let writer = OutputWriter(
             outputDirectory: outputOptions.outputDir.map { URL(fileURLWithPath: $0, isDirectory: true) },
             explicitOutput: outputOptions.output.map { URL(fileURLWithPath: $0) },
@@ -187,7 +211,54 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             )
         }
 
-        return try resolvedInputs(capabilities: capabilities)
+        let inputs = try resolvedInputs(capabilities: capabilities)
+        try checkDestinationCollisions(inputs)
+        return inputs
+    }
+
+    /// The providers whose segments are built from word timings.
+    ///
+    /// A subtitle format from one of these needs word timings, so `-f srt` has
+    /// to ask for them even when `--words` was not passed. Meta returns turns
+    /// and Apple returns entries, so neither needs the request.
+    static let wordSegmentProviders: Set<CLIProvider> = [.grok, .gemini, .openai, .elevenlabs]
+
+    /// Returns whether the run should ask the provider for word timings.
+    ///
+    /// - Parameters:
+    ///   - requested: Whether `--words` was passed.
+    ///   - formats: The requested output formats.
+    ///   - provider: The resolved provider.
+    static func wantsWords(requested: Bool, formats: [OutputFormat], provider: CLIProvider) -> Bool {
+        if requested { return true }
+        guard formats.contains(where: \.requiresTimings) else { return false }
+        return wordSegmentProviders.contains(provider)
+    }
+
+    /// Rejects two inputs that would write over each other.
+    ///
+    /// Outputs are named after the input stem, so `talk.wav` and `talk.m4a` in
+    /// one run both want `talk.txt`. Whichever finished last would win, so the
+    /// run is refused before any upload.
+    ///
+    /// - Throws: ``CLIError/usage(_:)`` naming both inputs and the shared path.
+    func checkDestinationCollisions(_ inputs: [URL]) throws {
+        guard !outputOptions.stdout, outputOptions.output == nil else { return }
+        let directory = outputOptions.outputDir.map { URL(fileURLWithPath: $0, isDirectory: true) }
+
+        var seen: [String: URL] = [:]
+        for input in inputs {
+            let stem = input.deletingPathExtension().lastPathComponent
+            let folder = directory ?? input.deletingLastPathComponent()
+            let key = folder.appendingPathComponent(stem).standardizedFileURL.path
+            if let first = seen[key] {
+                let format = outputOptions.resolvedFormats[0].rawValue
+                throw CLIError.usage(
+                    "\(first.path) and \(input.path) would both be written to \(key).\(format). Rename one, or transcribe them in separate runs."
+                )
+            }
+            seen[key] = input
+        }
     }
 
     /// Transcribes one file and writes every requested format.
@@ -206,8 +277,10 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         do {
             let transcribed = try await runner.transcribe(file: input)
             let document = try cueAdjusted(transcribed)
+            // Notes belong at normal verbosity: "--language was ignored" is not
+            // a detail the run can afford to hide behind --verbose.
             for warning in document.warnings {
-                console.verbose("speechkit: note: \(warning)")
+                console.warning(total > 1 ? "\(input.lastPathComponent): \(warning)" : warning)
             }
 
             var destinations: [OutputWriter.Destination] = []
@@ -225,11 +298,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             }
 
             let elapsed = String(format: "%.1f s", Date().timeIntervalSince(started))
-            let written = destinations.compactMap { destination -> String? in
-                if case .file(let url) = destination { return url.lastPathComponent }
-                return nil
-            }
-            let target = written.isEmpty ? "stdout" : written.joined(separator: ", ")
+            let target = Self.progressTarget(for: destinations)
             console.progress("[\(index)/\(total)] \(input.lastPathComponent) -> \(target) (\(provider.rawValue), \(elapsed))")
             return FileOutcome(input: input, destinations: destinations, failure: nil)
         } catch let error as CLIError {
@@ -241,6 +310,26 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
                 failure: .transcriptionFailed(file: input, reason: error.localizedDescription)
             )
         }
+    }
+
+    /// Returns what the progress line says a file was written to.
+    ///
+    /// A skipped file is spelled out rather than listed like a write, so the
+    /// line never claims an output the run did not produce.
+    ///
+    /// - Parameter destinations: The destinations for one input file.
+    static func progressTarget(for destinations: [OutputWriter.Destination]) -> String {
+        let written = destinations.compactMap { destination -> String? in
+            switch destination {
+            case .file(let url):
+                return url.lastPathComponent
+            case .skipped(let url):
+                return "\(url.lastPathComponent) (exists, skipped)"
+            case .standardOutput:
+                return nil
+            }
+        }
+        return written.isEmpty ? "stdout" : written.joined(separator: ", ")
     }
 
     /// The cue builder carrying the `--max-cue-*` limits.

@@ -25,7 +25,6 @@ struct TranscribeParsingTests {
             "--max-cue-duration", "5",
             "--max-cue-chars", "42",
             "--jobs", "3",
-            "--raw",
             "--verbose",
         ])
 
@@ -46,7 +45,6 @@ struct TranscribeParsingTests {
         #expect(command.maxCueDuration == 5)
         #expect(command.maxCueChars == 42)
         #expect(command.jobs == 3)
-        #expect(command.raw)
         #expect(command.globals.verbose)
     }
 

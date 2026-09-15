@@ -134,6 +134,93 @@ struct PreUploadValidationTests {
         }
     }
 
+    @Test("Two inputs with the same stem are refused before any upload")
+    func stemCollision() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try write(16, named: "talk.wav", in: directory)
+        let second = try write(16, named: "talk.mp3", in: directory)
+
+        let command = try Transcribe.parse([first.path, second.path, "-p", "openai"])
+        let error = #expect(throws: CLIError.self) {
+            _ = try command.validate(provider: .openai, capabilities: .capabilities(for: .openai))
+        }
+        #expect(error?.exitCode == 1)
+        #expect(error?.localizedDescription.contains(first.path) == true)
+        #expect(error?.localizedDescription.contains(second.path) == true)
+        #expect(error?.localizedDescription.contains("talk.txt") == true)
+    }
+
+    @Test("Different directories collide once --output-dir gathers them")
+    func stemCollisionAcrossDirectories() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let left = directory.appendingPathComponent("left", isDirectory: true)
+        let right = directory.appendingPathComponent("right", isDirectory: true)
+        try FileManager.default.createDirectory(at: left, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: right, withIntermediateDirectories: true)
+        let first = try write(16, named: "talk.wav", in: left)
+        let second = try write(16, named: "talk.wav", in: right)
+
+        let apart = try Transcribe.parse([first.path, second.path, "-p", "openai"])
+        #expect(try apart.validate(provider: .openai, capabilities: .capabilities(for: .openai)).count == 2)
+
+        let together = try Transcribe.parse([
+            first.path, second.path, "-p", "openai", "-o", directory.appendingPathComponent("out").path,
+        ])
+        #expect(throws: CLIError.self) {
+            _ = try together.validate(provider: .openai, capabilities: .capabilities(for: .openai))
+        }
+    }
+
+    @Test("--output-dir cannot be combined with --output or --stdout")
+    func outputDirExclusivity() {
+        #expect(throws: (any Error).self) {
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-o", "/tmp/out", "--output", "/tmp/a.txt"])
+        }
+        #expect(throws: (any Error).self) {
+            _ = try Transcribe.parse(["a.wav", "-p", "grok", "-o", "/tmp/out", "--stdout"])
+        }
+    }
+
+    @Test("A skipped destination is spelled out rather than read as a write")
+    func skippedDestinationReported() {
+        let url = URL(fileURLWithPath: "/tmp/out/talk.txt")
+        let subtitle = URL(fileURLWithPath: "/tmp/out/talk.srt")
+
+        #expect(Transcribe.progressTarget(for: [.file(url)]) == "talk.txt")
+        #expect(Transcribe.progressTarget(for: [.skipped(url)]) == "talk.txt (exists, skipped)")
+        #expect(
+            Transcribe.progressTarget(for: [.file(subtitle), .skipped(url)])
+                == "talk.srt, talk.txt (exists, skipped)"
+        )
+        #expect(Transcribe.progressTarget(for: [.standardOutput]) == "stdout")
+    }
+
+    @Test("A subtitle format asks for word timings from the providers that need them")
+    func subtitlesRequestWords() {
+        for provider in [CLIProvider.grok, .gemini, .openai, .elevenlabs] {
+            #expect(Transcribe.wantsWords(requested: false, formats: [.srt], provider: provider))
+            #expect(Transcribe.wantsWords(requested: false, formats: [.txt, .vtt], provider: provider))
+            #expect(Transcribe.wantsWords(requested: false, formats: [.txt], provider: provider) == false)
+        }
+        for provider in [CLIProvider.meta, .apple] {
+            #expect(Transcribe.wantsWords(requested: false, formats: [.srt], provider: provider) == false)
+            #expect(Transcribe.wantsWords(requested: true, formats: [.txt], provider: provider))
+        }
+    }
+
+    @Test("A bare word that is not a file reads as a mistyped subcommand")
+    func subcommandHint() throws {
+        let hint = try #require(Transcribe.subcommandHint(for: ["bogus"]))
+        #expect(hint.contains("'bogus' is not a file"))
+        #expect(hint.contains("speechkit --help"))
+
+        #expect(Transcribe.subcommandHint(for: ["missing.wav"]) == nil)
+        #expect(Transcribe.subcommandHint(for: ["./bogus"]) == nil)
+        #expect(Transcribe.subcommandHint(for: ["/tmp/bogus"]) == nil)
+    }
+
     @Test("Inputs keep the order they were named in")
     func inputOrder() throws {
         let directory = try temporaryDirectory()

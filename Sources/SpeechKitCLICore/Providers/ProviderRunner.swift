@@ -21,8 +21,6 @@ public struct RunContext: Sendable {
     public var wantsWords: Bool
     /// Whether speaker labels were requested.
     public var wantsDiarization: Bool
-    /// Whether the provider's raw response should be kept.
-    public var includeRaw: Bool
     /// The longest subtitle cue, in seconds.
     public var maxCueDuration: Double
     /// The longest subtitle cue, in characters.
@@ -41,7 +39,6 @@ public struct RunContext: Sendable {
         keywords: [String] = [],
         wantsWords: Bool = false,
         wantsDiarization: Bool = false,
-        includeRaw: Bool = false,
         maxCueDuration: Double = 7,
         maxCueChars: Int = 84,
         cueMode: CueMode = .segments
@@ -55,7 +52,6 @@ public struct RunContext: Sendable {
         self.keywords = keywords
         self.wantsWords = wantsWords
         self.wantsDiarization = wantsDiarization
-        self.includeRaw = includeRaw
         self.maxCueDuration = maxCueDuration
         self.maxCueChars = maxCueChars
         self.cueMode = cueMode
@@ -85,6 +81,18 @@ public protocol ProviderRunner: Sendable {
     /// Creates a runner for one command invocation.
     init(context: RunContext)
 
+    /// Checks the run context against what the provider accepts.
+    ///
+    /// ``ProviderRegistry/makeRunner(for:context:)`` calls this for every
+    /// provider before any file is read, so a bad `--model`, `--language`, or
+    /// flag combination exits with code 1 rather than failing per file.
+    ///
+    /// The method is asynchronous because Apple's list of supported locales is,
+    /// and every other runner ignores that.
+    ///
+    /// - Throws: ``CLIError`` when the request does not match the provider.
+    func validate() async throws
+
     /// Transcribes one audio file.
     ///
     /// - Throws: ``CLIError`` for configuration problems, or a `SpeechError` from the provider.
@@ -92,8 +100,6 @@ public protocol ProviderRunner: Sendable {
 }
 
 extension ProviderRunner {
-    /// The note added when `--raw` is passed but the provider response body is not reachable.
-    static var rawUnavailableWarning: String {
-        "--raw is not available for \(Self.provider.rawValue) yet; SpeechKit returns decoded values only."
-    }
+    /// Accepts any run context, for providers with nothing to check up front.
+    public func validate() async throws {}
 }

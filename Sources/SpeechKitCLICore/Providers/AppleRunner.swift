@@ -1,4 +1,5 @@
 import Foundation
+import Speech
 import SpeechKit
 
 /// Transcribes files with Apple's local Speech framework.
@@ -15,6 +16,42 @@ public struct AppleRunner: ProviderRunner {
     /// Creates an Apple runner.
     public init(context: RunContext) {
         self.context = context
+    }
+
+    /// Checks `--language` against the locales this machine's transcriber supports.
+    ///
+    /// The Speech framework reports its locales asynchronously, because the list
+    /// depends on assets the system may still be downloading, so this is the one
+    /// runner whose validation has to await something.
+    ///
+    /// - Throws: ``CLIError/usage(_:)`` when the locale is not supported here.
+    public func validate() async throws {
+        guard let requested = LanguageMapping.apple(context.languages) else { return }
+        let supported = await SpeechTranscriber.supportedLocales
+        guard !supported.isEmpty else { return }
+        guard !Self.isSupported(requested, in: supported) else { return }
+
+        let examples = supported
+            .map { $0.identifier(.bcp47) }
+            .sorted()
+            .prefix(3)
+            .joined(separator: ", ")
+        throw CLIError.usage(
+            "\(requested.identifier(.bcp47)) is not a locale this machine's transcriber supports. Supported identifiers include \(examples). Run 'speechkit languages apple' for the full list."
+        )
+    }
+
+    /// Returns whether a requested locale matches one the transcriber supports.
+    ///
+    /// A bare language such as `en` matches any region of it, so `--language en`
+    /// keeps working on a machine that lists `en-US` alone.
+    static func isSupported(_ requested: Locale, in supported: some Collection<Locale>) -> Bool {
+        let tag = requested.identifier(.bcp47).lowercased()
+        if supported.contains(where: { $0.identifier(.bcp47).lowercased() == tag }) { return true }
+        guard requested.region == nil, let language = requested.language.languageCode?.identifier.lowercased() else {
+            return false
+        }
+        return supported.contains { $0.language.languageCode?.identifier.lowercased() == language }
     }
 
     /// Transcribes one file with Apple's local Speech framework.
@@ -42,7 +79,6 @@ public struct AppleRunner: ProviderRunner {
         return Self.map(
             response,
             file: file,
-            includeRaw: context.includeRaw,
             warnings: warnings,
             cueBuilder: context.cueBuilder
         )
@@ -61,14 +97,10 @@ public struct AppleRunner: ProviderRunner {
     public static func map(
         _ response: AppleSpeechFileTranscriptionResponse,
         file: URL,
-        includeRaw: Bool = false,
         warnings: [String] = [],
         cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
-        var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
+        let warnings = warnings
 
         // Apple does not diarize. SpeechKit fills `speaker` on Apple entries with
         // the locale identifier, so the runner drops it rather than pass a
@@ -91,17 +123,19 @@ public struct AppleRunner: ProviderRunner {
         // regroups the words into cues that obey the command line limits, which
         // is what the subtitle formats need. Otherwise the entries stand as
         // they came.
-        let entrySegments = response.entries.compactMap { entry -> TranscriptDocument.Segment? in
-            let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return nil }
-            let start = entry.start ?? 0
-            return TranscriptDocument.Segment(
-                start: start,
-                end: start + (entry.duration ?? 0),
-                text: text,
-                speaker: nil
-            )
-        }
+        let entrySegments = RunnerSupport.orderedSegments(
+            response.entries.compactMap { entry -> TranscriptDocument.Segment? in
+                let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return nil }
+                let start = entry.start ?? 0
+                return TranscriptDocument.Segment(
+                    start: start,
+                    end: start + (entry.duration ?? 0),
+                    text: text,
+                    speaker: nil
+                )
+            }
+        )
         let hasWordTimings = !words.isEmpty && words.allSatisfy { $0.start != nil }
         let segments = hasWordTimings
             ? cueBuilder.segments(from: words, fallbackText: response.text, duration: nil)
@@ -114,7 +148,7 @@ public struct AppleRunner: ProviderRunner {
             model: nil,
             sourceFile: file.path,
             text: response.text,
-            language: response.locale.identifier,
+            language: response.locale.identifier(.bcp47),
             duration: duration,
             segments: segments,
             words: words,

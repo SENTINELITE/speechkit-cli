@@ -73,21 +73,6 @@ public struct TranscriptDocument: Codable, Sendable, Equatable {
     public var words: [Word]
     /// Notes about anything the provider could not supply.
     public var warnings: [String]
-    /// The provider's original response body, populated only with `--raw`.
-    public var rawJSON: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case provider
-        case model
-        case sourceFile
-        case text
-        case language
-        case duration
-        case segments
-        case words
-        case warnings
-        case rawJSON = "raw"
-    }
 
     /// Creates a transcript document.
     public init(
@@ -99,8 +84,7 @@ public struct TranscriptDocument: Codable, Sendable, Equatable {
         duration: Double? = nil,
         segments: [Segment] = [],
         words: [Word] = [],
-        warnings: [String] = [],
-        rawJSON: String? = nil
+        warnings: [String] = []
     ) {
         self.provider = provider
         self.model = model
@@ -111,7 +95,6 @@ public struct TranscriptDocument: Codable, Sendable, Equatable {
         self.segments = segments
         self.words = words
         self.warnings = warnings
-        self.rawJSON = rawJSON
     }
 
     /// A Boolean value indicating whether the document carries usable timings.

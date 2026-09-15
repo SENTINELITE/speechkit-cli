@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.1 — 2026-09-15
+
+Review fixes across option handling, output, and subtitles.
+
+- OpenAI now reconciles `--model` with `--words`, `--diarize`, and `--prompt`
+  before the upload: word timestamps select `whisper-1`, speaker labels select
+  `gpt-4o-transcribe-diarize`, that model's prompt is dropped with a note, and a
+  model that cannot serve the flags is a usage error rather than a rejected
+  request.
+- `--format srt` and `--format vtt` ask Grok, Gemini, OpenAI, and ElevenLabs for
+  word timestamps, so subtitles no longer fail with "no timing data" after a
+  successful upload.
+- `--max-cue-duration` and `--max-cue-chars` now reach the Gemini and ElevenLabs
+  segment builders.
+- Two inputs that would write to the same path are refused before any upload,
+  and `--output-dir` can no longer be combined with `--output` or `--stdout`.
+- A skipped output reads as `talk.txt (exists, skipped)` in the progress line
+  instead of looking like a write. The run still exits 0.
+- WebVTT escapes `&`, `<`, and `>` in cue text, and `NOTE` values lose their line
+  breaks and cue arrows.
+- Provider notes print at normal verbosity, prefixed with the file name in a
+  multi-file run, rather than hiding behind `--verbose`.
+- Every provider validates `--model` and `--language` before the first upload,
+  so a bad value always exits 1. Apple checks `--language` against the locales
+  this machine's transcriber supports and reports BCP-47 language tags.
+- Grok notes that it drops `--prompt` and `--keyword`. Provider segments are
+  sorted by start, and a segment ending before it starts is dropped.
+- `speechkit bogus` explains that the argument is not a file and points at
+  `speechkit --help`.
+- Removed `--raw`, which no provider could serve, along with the eight warnings
+  it produced.
+
 ## 0.3.0 — 2026-09-15
 
 First working version of the `speechkit` command-line tool.

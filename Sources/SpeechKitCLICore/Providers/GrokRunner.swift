@@ -13,11 +13,24 @@ public struct GrokRunner: ProviderRunner {
         self.context = context
     }
 
+    /// Checks the model and language before any upload starts.
+    ///
+    /// - Throws: ``CLIError`` when `--model` or `--language` is not one Grok accepts.
+    public func validate() async throws {
+        _ = try resolvedModelID()
+        _ = try LanguageMapping.grok(context.languages)
+    }
+
     /// Transcribes one file with Grok.
     public func transcribe(file: URL) async throws -> TranscriptDocument {
         let credential = try context.requireCredential(for: Self.provider)
         let modelID = try resolvedModelID()
         let language = try LanguageMapping.grok(context.languages)
+        let warnings = RunnerSupport.droppedOptionWarnings(
+            prompt: context.prompt,
+            keywords: context.keywords,
+            for: Self.provider
+        )
         let configuration = GrokConfiguration(
             credential: credential,
             modelID: modelID,
@@ -32,21 +45,13 @@ public struct GrokRunner: ProviderRunner {
             response,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
+            warnings: warnings,
             cueBuilder: context.cueBuilder
         )
     }
 
     private func resolvedModelID() throws -> GrokModelID {
-        guard let model = context.model else { return .stt }
-        guard let modelID = GrokModelID(rawValue: model) else {
-            throw CLIError.invalidModel(
-                provider: .grok,
-                model: model,
-                valid: GrokModelID.allCases.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(context.model, default: .stt, provider: Self.provider)
     }
 
     @MainActor
@@ -63,13 +68,10 @@ public struct GrokRunner: ProviderRunner {
         _ response: GrokFileTranscriptionResponse,
         file: URL,
         modelID: GrokModelID,
-        includeRaw: Bool = false,
+        warnings: [String] = [],
         cueBuilder: CueBuilder = CueBuilder()
     ) -> TranscriptDocument {
-        var warnings: [String] = []
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
+        var warnings = warnings
 
         let words = (response.words ?? []).map { word in
             TranscriptDocument.Word(

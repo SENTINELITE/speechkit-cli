@@ -16,7 +16,7 @@ public struct AquaRunner: ProviderRunner {
     /// Checks the model and language before any upload starts.
     ///
     /// - Throws: ``CLIError`` when `--model` or `--language` is not one Aqua accepts.
-    public func validate() throws {
+    public func validate() async throws {
         _ = try resolvedModelID()
         _ = try LanguageMapping.aqua(context.languages)
     }
@@ -26,17 +26,12 @@ public struct AquaRunner: ProviderRunner {
         let credential = try context.requireCredential(for: Self.provider)
         let modelID = try resolvedModelID()
         let language = try LanguageMapping.aqua(context.languages)
-        var warnings: [String] = []
-
-        if context.timeout != nil {
-            warnings.append("SpeechKit's Aqua client takes no request timeout; --timeout was dropped.")
-        }
-        if context.prompt != nil {
-            warnings.append("Aqua has no prompt parameter; --prompt was dropped.")
-        }
-        if !context.keywords.isEmpty {
-            warnings.append("Aqua has no vocabulary parameter; --keyword was dropped.")
-        }
+        let warnings = RunnerSupport.droppedOptionWarnings(
+            prompt: context.prompt,
+            keywords: context.keywords,
+            timeout: context.timeout,
+            for: Self.provider
+        )
 
         let configuration = AquaConfiguration(
             credential: credential,
@@ -50,21 +45,12 @@ public struct AquaRunner: ProviderRunner {
             response,
             file: file,
             modelID: modelID,
-            includeRaw: context.includeRaw,
             warnings: warnings
         )
     }
 
     private func resolvedModelID() throws -> AquaModelID {
-        guard let model = context.model else { return .avalonV15 }
-        guard let modelID = AquaModelID(rawValue: model) else {
-            throw CLIError.invalidModel(
-                provider: .aqua,
-                model: model,
-                valid: AquaModelID.allCases.map(\.rawValue)
-            )
-        }
-        return modelID
+        try RunnerSupport.resolveModel(context.model, default: .avalonV15, provider: Self.provider)
     }
 
     @MainActor
@@ -85,13 +71,9 @@ public struct AquaRunner: ProviderRunner {
         _ response: AquaFileTranscriptionResponse,
         file: URL,
         modelID: AquaModelID,
-        includeRaw: Bool = false,
         warnings: [String] = []
     ) -> TranscriptDocument {
         var warnings = warnings
-        if includeRaw {
-            warnings.append(rawUnavailableWarning)
-        }
         warnings.append("Aqua returns text only; the transcript is one untimed segment.")
 
         return TranscriptDocument(
@@ -101,7 +83,7 @@ public struct AquaRunner: ProviderRunner {
             text: response.text,
             language: nil,
             duration: nil,
-            segments: SentenceSegmenter.segments(from: [], fallbackText: response.text, duration: nil),
+            segments: CueBuilder().segments(from: [], fallbackText: response.text, duration: nil),
             words: [],
             warnings: warnings
         )

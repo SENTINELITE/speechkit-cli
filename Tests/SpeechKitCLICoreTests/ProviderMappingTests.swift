@@ -39,13 +39,6 @@ struct ProviderMappingTests {
         #expect(document.warnings.count == 1)
     }
 
-    @Test("Grok notes that --raw is unavailable")
-    func grokRawWarning() throws {
-        let response = try Fixture.decode(GrokFileTranscriptionResponse.self, from: "grok-response")
-        let document = GrokRunner.map(response, file: file, modelID: .stt, includeRaw: true)
-        #expect(document.warnings.contains { $0.contains("--raw") })
-    }
-
     @Test("OpenAI segments and words map through")
     func openAIMapping() throws {
         let response = try Fixture.decode(OpenAIFileTranscriptionResponse.self, from: "openai-response")
@@ -253,25 +246,22 @@ struct ProviderMappingTests {
     }
 
     @Test("The registry builds a runner for every provider")
-    func registry() throws {
+    func registry() async throws {
         let context = RunContext(credential: .apiKey("key"))
-        #expect(try ProviderRegistry.makeRunner(for: .grok, context: context) is GrokRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .openai, context: context) is OpenAIRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .gemini, context: context) is GeminiRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .meta, context: context) is MetaRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .elevenlabs, context: context) is ElevenLabsRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .aqua, context: context) is AquaRunner)
-        #expect(try ProviderRegistry.makeRunner(for: .cohere, context: context) is CohereRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .grok, context: context) is GrokRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .openai, context: context) is OpenAIRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .gemini, context: context) is GeminiRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .meta, context: context) is MetaRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .elevenlabs, context: context) is ElevenLabsRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .aqua, context: context) is AquaRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .cohere, context: context) is CohereRunner)
     }
 
     @Test("The registry rejects a bad language before any upload")
-    func registryValidatesLanguage() {
+    func registryValidatesLanguage() async {
         let context = RunContext(credential: .apiKey("key"), languages: ["xx"])
-        #expect(throws: CLIError.self) {
-            _ = try ProviderRegistry.makeRunner(for: .meta, context: context)
-        }
         do {
-            _ = try ProviderRegistry.makeRunner(for: .meta, context: context)
+            _ = try await ProviderRegistry.makeRunner(for: .meta, context: context)
             Issue.record("expected a thrown error")
         } catch let error as CLIError {
             #expect(error.exitCode == 1)
@@ -281,11 +271,57 @@ struct ProviderMappingTests {
         }
     }
 
-    @Test("The registry rejects a bad model before any upload")
-    func registryValidatesModel() {
-        let context = RunContext(credential: .apiKey("key"), model: "scribe_v2_realtime")
-        #expect(throws: CLIError.self) {
-            _ = try ProviderRegistry.makeRunner(for: .elevenlabs, context: context)
+    @Test("Every provider rejects a bad model with exit code 1 before any upload")
+    func registryValidatesModel() async throws {
+        let bad = ["elevenlabs": "scribe_v2_realtime"]
+        // Apple has no model identifier at all, so it notes that --model was
+        // ignored rather than refusing the run.
+        for provider in CLIProvider.allCases where provider != .apple {
+            let context = RunContext(credential: .apiKey("key"), model: bad[provider.rawValue] ?? "bogus")
+            do {
+                _ = try await ProviderRegistry.makeRunner(for: provider, context: context)
+                Issue.record("\(provider.rawValue) accepted a bogus model")
+            } catch let error as CLIError {
+                #expect(error.exitCode == 1)
+            } catch {
+                Issue.record("unexpected error \(error)")
+            }
         }
+    }
+
+    @Test("Grok notes the options it has to drop")
+    func grokDroppedOptions() throws {
+        let warnings = RunnerSupport.droppedOptionWarnings(
+            prompt: "a hint",
+            keywords: ["SpeechKit"],
+            for: .grok
+        )
+        #expect(warnings == [
+            "Grok has no prompt parameter; --prompt was dropped.",
+            "Grok has no vocabulary parameter; --keyword was dropped.",
+        ])
+
+        let response = try Fixture.decode(GrokFileTranscriptionResponse.self, from: "grok-response")
+        let document = GrokRunner.map(response, file: file, modelID: .stt, warnings: warnings)
+        #expect(document.warnings == warnings)
+    }
+
+    @Test("--max-cue-chars reaches Gemini and ElevenLabs segment building")
+    func cueLimitsReachRunners() throws {
+        // Six characters is narrower than any two of the fixture's words, so
+        // every cue the builder produces holds one word.
+        let tight = CueBuilder(maxCueDuration: 7, maxCueChars: 6)
+
+        let gemini = try Fixture.decode(GeminiFileTranscriptionResponse.self, from: "gemini-response")
+        let wide = GeminiRunner.map(gemini, file: file, modelID: .transcribe35)
+        let narrow = GeminiRunner.map(gemini, file: file, modelID: .transcribe35, cueBuilder: tight)
+        #expect(narrow.segments.count > wide.segments.count)
+        #expect(narrow.segments.count == narrow.words.count)
+
+        let scribe = try Fixture.decode(ElevenLabsFileTranscriptionResponse.self, from: "elevenlabs-response")
+        let wideScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV1)
+        let narrowScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV1, cueBuilder: tight)
+        #expect(narrowScribe.segments.count > wideScribe.segments.count)
+        #expect(narrowScribe.segments.count == narrowScribe.words.count)
     }
 }

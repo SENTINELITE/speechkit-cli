@@ -204,11 +204,11 @@ struct CueBuilderTests {
         #expect(cues.map(\.text) == ["a", "b"])
     }
 
-    @Test("The sentence segmenter still delegates to the default cue rules")
-    func segmenterDelegates() {
+    @Test("A gap longer than the threshold still splits a cue at the default limits")
+    func defaultLimitsSplitOnGaps() {
         let words = [word("one", 0, 0.4), word("two", 1.7, 2.0)]
-        let viaSegmenter = SentenceSegmenter.segments(from: words, fallbackText: "one two", duration: 2)
-        #expect(viaSegmenter == CueBuilder().segments(from: words, fallbackText: "one two", duration: 2))
-        #expect(viaSegmenter.count == 2)
+        let cues = CueBuilder().segments(from: words, fallbackText: "one two", duration: 2)
+        #expect(cues.count == 2)
+        #expect(cues.map(\.text) == ["one", "two"])
     }
 }
