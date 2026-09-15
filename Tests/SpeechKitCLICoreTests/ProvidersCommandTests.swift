@@ -24,6 +24,7 @@ struct ProvidersCommandTests {
         meta        muse-voice-transcribe-1.0  no     yes       yes      languageName  32 MB     15     none        wav
         gemini      gemini-3.5-transcribe      yes    yes       yes      bcp47         -         15     none        aac,aif,aiff,flac,m4a,mp3,mpeg,mpga,ogg,opus,wav,webm
         apple       -                          yes    yes       no       locale        -         26     not needed  any
+        voz         voz v0.1.0                 yes    yes       no       none          -         15     not needed  any
 
         """)
     }
@@ -40,6 +41,7 @@ struct ProvidersCommandTests {
         #expect(byProvider["grok"] == .keychain)
         #expect(byProvider["meta"] == .notFound)
         #expect(byProvider["apple"] == .notNeeded)
+        #expect(byProvider["voz"] == .notNeeded)
     }
 
     @Test("--json emits an array of objects")

@@ -35,6 +35,10 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
     case missingCredential(CLIProvider)
     /// Apple local transcription needs a newer operating system.
     case appleUnavailable
+    /// An on-device model could not be downloaded or loaded.
+    case modelNotReady(provider: CLIProvider, reason: String)
+    /// An on-device model is missing and `--no-download` forbade fetching it.
+    case modelDownloadRefused(provider: CLIProvider, size: String)
     /// A subtitle format was asked for but the transcript carries no timings.
     case noTimingData(provider: String)
     /// A subtitle format was asked for from a provider that never returns timings.
@@ -78,6 +82,10 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return "No credential for \(provider.rawValue). Pass --api-key or set \(variable)."
         case .appleUnavailable:
             return "Apple local transcription requires macOS 26 or later."
+        case .modelNotReady(let provider, let reason):
+            return "The \(provider.rawValue) model is not ready: \(reason)"
+        case .modelDownloadRefused(let provider, let size):
+            return "The \(provider.rawValue) model is not downloaded, and --no-download was passed. Run 'speechkit \(provider.rawValue) prepare' to fetch it (\(size)), or drop --no-download."
         case .noTimingData(let provider):
             return "no timing data from \(provider); use --format txt or json, or pick a provider from 'speechkit providers' with segments"
         case .subtitlesUnsupported(let provider, let formats):
@@ -106,7 +114,11 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
             return 1
         case .writeFailed, .transcriptionFailed:
             return 2
-        case .missingCredential, .appleUnavailable, .keychainFailure:
+        case .missingCredential,
+             .appleUnavailable,
+             .modelNotReady,
+             .modelDownloadRefused,
+             .keychainFailure:
             return 3
         }
     }

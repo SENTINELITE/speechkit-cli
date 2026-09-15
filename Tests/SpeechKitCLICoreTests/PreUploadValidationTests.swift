@@ -210,7 +210,7 @@ struct PreUploadValidationTests {
             #expect(Transcribe.wantsWords(requested: false, formats: [.txt, .vtt], provider: provider))
             #expect(Transcribe.wantsWords(requested: false, formats: [.txt], provider: provider) == false)
         }
-        for provider in [CLIProvider.meta, .apple] {
+        for provider in [CLIProvider.meta, .apple, .voz] {
             #expect(Transcribe.wantsWords(requested: false, formats: [.srt], provider: provider) == false)
             #expect(Transcribe.wantsWords(requested: true, formats: [.txt], provider: provider))
         }

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 — 2026-09-15
+
+The on-device VOZ model joins the provider list.
+
+- `--provider voz` transcribes locally through the SpeechKit-Voz package, with
+  word timings and cue-built segments, no API key, and no audio leaving the
+  machine. The model is not bundled: the first use downloads roughly 467 MB.
+- `speechkit voz status` reports whether the model is cached, and
+  `speechkit voz prepare` downloads and loads it once ahead of time.
+  `--download-only` fetches the files without loading them.
+- `speechkit transcribe --no-download` exits with code 3 and points at
+  `speechkit voz prepare` rather than starting a surprise download.
+- A batch loads one model and shares it across every `--jobs` worker, then
+  releases it when the last file finishes.
+- `--model`, `--endpoint`, `--language`, `--timeout`, `--prompt`, and
+  `--keyword` are dropped with a note under `voz`, and `--diarize` is a usage
+  error. `speechkit providers` and `speechkit languages voz` describe all of it.
+- The VOZ runtime and model are under the Desert Ant Labs Source-Available
+  License, not Apache 2.0. See the license notice in the README.
+
 ## 0.4.0 — 2026-09-15
 
 Output goes to stdout by default.

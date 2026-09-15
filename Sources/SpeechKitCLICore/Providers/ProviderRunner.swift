@@ -27,6 +27,13 @@ public struct RunContext: Sendable {
     public var maxCueChars: Int
     /// Whether subtitle cues come from segments or from single words.
     public var cueMode: CueMode
+    /// Whether a provider may fetch an on-device model it does not have yet.
+    ///
+    /// `--no-download` sets this to `false` so a script never triggers a
+    /// surprise several-hundred-megabyte download.
+    public var allowsModelDownload: Bool
+    /// The console model preparation reports progress on.
+    public var console: Console
 
     /// Creates a run context.
     public init(
@@ -41,7 +48,9 @@ public struct RunContext: Sendable {
         wantsDiarization: Bool = false,
         maxCueDuration: Double = 7,
         maxCueChars: Int = 84,
-        cueMode: CueMode = .segments
+        cueMode: CueMode = .segments,
+        allowsModelDownload: Bool = true,
+        console: Console = Console()
     ) {
         self.credential = credential
         self.model = model
@@ -55,6 +64,8 @@ public struct RunContext: Sendable {
         self.maxCueDuration = maxCueDuration
         self.maxCueChars = maxCueChars
         self.cueMode = cueMode
+        self.allowsModelDownload = allowsModelDownload
+        self.console = console
     }
 
     /// A cue builder carrying the limits from the command line.
@@ -97,9 +108,19 @@ public protocol ProviderRunner: Sendable {
     ///
     /// - Throws: ``CLIError`` for configuration problems, or a `SpeechError` from the provider.
     func transcribe(file: URL) async throws -> TranscriptDocument
+
+    /// Releases anything the run held after the last file finishes.
+    ///
+    /// Only the on-device runners implement this. VOZ keeps a multi-hundred
+    /// megabyte Core ML model resident for the whole batch, and the process
+    /// exits faster once it is dropped.
+    func finish() async
 }
 
 extension ProviderRunner {
     /// Accepts any run context, for providers with nothing to check up front.
     public func validate() async throws {}
+
+    /// Does nothing, for providers that hold no resources between files.
+    public func finish() async {}
 }

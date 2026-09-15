@@ -35,8 +35,8 @@ public struct SpeechKitCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "speechkit",
         abstract: "Transcribe audio files with any SpeechKit provider.",
-        version: "0.4.0",
-        subcommands: [Transcribe.self, Providers.self, Languages.self, Keys.self],
+        version: "0.5.0",
+        subcommands: [Transcribe.self, Providers.self, Languages.self, Keys.self, Voz.self],
         defaultSubcommand: Transcribe.self
     )
 

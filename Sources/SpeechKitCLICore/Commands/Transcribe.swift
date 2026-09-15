@@ -145,7 +145,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             wantsDiarization: transcription.diarize,
             maxCueDuration: maxCueDuration,
             maxCueChars: maxCueChars,
-            cueMode: cues
+            cueMode: cues,
+            allowsModelDownload: !transcription.noDownload,
+            console: console
         )
         let runner = try await ProviderRegistry.makeRunner(for: provider, context: context)
         let writer = OutputWriter(
@@ -165,6 +167,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
                 console: console
             )
         }
+
+        await runner.finish()
 
         // Outcomes come back in input order, so failures are reported in the
         // order the files were named however the uploads interleaved.

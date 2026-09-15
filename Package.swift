@@ -19,6 +19,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../SpeechKit"),
+        .package(path: "../SpeechKit-Voz"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
@@ -26,6 +27,7 @@ let package = Package(
             name: "SpeechKitCLICore",
             dependencies: [
                 .product(name: "SpeechKit", package: "SpeechKit"),
+                .product(name: "SpeechKitVoz", package: "SpeechKit-Voz"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),

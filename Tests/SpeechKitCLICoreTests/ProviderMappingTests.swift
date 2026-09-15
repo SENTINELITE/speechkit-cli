@@ -274,9 +274,10 @@ struct ProviderMappingTests {
     @Test("Every provider rejects a bad model with exit code 1 before any upload")
     func registryValidatesModel() async throws {
         let bad = ["elevenlabs": "scribe_v2_realtime"]
-        // Apple has no model identifier at all, so it notes that --model was
-        // ignored rather than refusing the run.
-        for provider in CLIProvider.allCases where provider != .apple {
+        // Apple and VOZ have no model identifier at all, so they note that
+        // --model was ignored rather than refusing the run. Building a VOZ
+        // runner would also prepare a 467 MB model, which no test does.
+        for provider in CLIProvider.allCases where provider != .apple && provider != .voz {
             let context = RunContext(credential: .apiKey("key"), model: bad[provider.rawValue] ?? "bogus")
             do {
                 _ = try await ProviderRegistry.makeRunner(for: provider, context: context)

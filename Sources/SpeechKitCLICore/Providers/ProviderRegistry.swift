@@ -35,6 +35,8 @@ public enum ProviderRegistry {
             runner = AquaRunner(context: context)
         case .cohere:
             runner = CohereRunner(context: context)
+        case .voz:
+            runner = VozRunner(context: context)
         }
         try await runner.validate()
         return runner

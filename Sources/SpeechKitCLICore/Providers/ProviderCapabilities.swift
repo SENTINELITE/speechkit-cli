@@ -159,6 +159,19 @@ public struct ProviderCapabilities: Sendable, Equatable {
                 acceptedExtensions: nil,
                 requiresMacOS26: true
             )
+        case .voz:
+            // VOZ runs a Core ML model from disk, so there is no upload limit,
+            // and `AVAudioFile` decodes whatever the system can open rather
+            // than a fixed extension list.
+            return ProviderCapabilities(
+                defaultFileModel: VozModelSession.modelVersion,
+                supportsWordTimestamps: true,
+                supportsSegments: true,
+                supportsDiarization: false,
+                languageStyle: .none,
+                maxFileBytes: nil,
+                acceptedExtensions: nil
+            )
         }
     }
 }

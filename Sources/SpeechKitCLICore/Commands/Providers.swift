@@ -72,7 +72,7 @@ public struct ProviderReport: Sendable, Codable, Equatable {
         environment: [String: String],
         store: (any KeychainStoring)?
     ) -> CredentialSource {
-        guard provider != .apple else { return .notNeeded }
+        guard provider.requiresCredential else { return .notNeeded }
         let variable = CredentialResolver.environmentVariableName(for: provider)
         if let value = environment[variable]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
             return .environment

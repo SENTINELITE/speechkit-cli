@@ -35,6 +35,10 @@ public struct TranscriptionOptions: ParsableArguments, Sendable {
     @Flag(name: .long, help: "Request word-level timestamps.")
     public var words: Bool = false
 
+    /// Refuses to fetch an on-device model that is not cached yet.
+    @Flag(name: .long, help: "Fail instead of downloading a missing on-device model.")
+    public var noDownload: Bool = false
+
     /// Requests speaker labels.
     @Flag(name: .long, help: "Request speaker labels.")
     public var diarize: Bool = false

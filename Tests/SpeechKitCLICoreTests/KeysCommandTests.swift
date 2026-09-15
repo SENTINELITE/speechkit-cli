@@ -70,6 +70,7 @@ struct KeysCommandTests {
         meta        no      -
         gemini      no      -
         apple       n/a     -
+        voz         n/a     -
 
         """)
     }

@@ -2,14 +2,16 @@
 
 A macOS command-line tool that transcribes one or more audio files with any
 [SpeechKit](../SpeechKit) file provider — ElevenLabs, Aqua, Cohere, Grok,
-OpenAI, Meta, Gemini, or Apple's on-device Speech framework — and writes plain
+OpenAI, Meta, Gemini, Apple's on-device Speech framework, or the on-device VOZ
+model — and writes plain
 text, JSON, SubRip, or WebVTT, with optional word-level timestamps and speaker
 labels. It is a thin front end over the SpeechKit package: every provider
 request goes through SpeechKit's detailed file-transcription calls, and the
 responses are mapped into one neutral `TranscriptDocument` that the formatters
 render. The package is a path dependency (`.package(path: "../SpeechKit")`), so
 this checkout and the SpeechKit checkout must sit side by side in the same
-parent directory and the tool always builds against whatever is on disk.
+parent directory and the tool always builds against whatever is on disk. VOZ
+comes from a second path dependency, `../SpeechKit-Voz`.
 
 ## Requirements
 
@@ -17,7 +19,9 @@ parent directory and the tool always builds against whatever is on disk.
 - macOS 26 or later for `--provider apple`. On macOS 15 the local speech
   analyzer does not exist and `--provider apple` exits with code 3.
 - Xcode 26 or later (Swift 6.2 or later) to build.
-- A sibling SpeechKit checkout at `../SpeechKit`.
+- A sibling SpeechKit checkout at `../SpeechKit`, and a sibling SpeechKit-Voz
+  checkout at `../SpeechKit-Voz`.
+- About 467 MB of disk for `--provider voz`, downloaded on first use.
 
 ## Build and install
 
@@ -62,6 +66,7 @@ If none of the three yields a key, the run exits with code 3 before any upload.
 | `meta` | `SPEECHKIT_META_API_KEY` |
 | `gemini` | `SPEECHKIT_GEMINI_API_KEY` |
 | `apple` | none; runs on device |
+| `voz` | none; runs on device |
 
 `SPEECHKIT_PROVIDER` supplies the default for `--provider`, so
 `export SPEECHKIT_PROVIDER=openai` lets you drop the flag entirely.
@@ -78,8 +83,9 @@ speechkit keys list                  # default subcommand; also plain `speechkit
 ```
 
 `keys set` warns when the matching environment variable is also set, because
-the variable wins over the keychain at transcription time. `apple` is rejected
-by `set`, `get`, and `delete` with "apple needs no key".
+the variable wins over the keychain at transcription time. `apple` and `voz`
+are rejected by `set`, `get`, and `delete` with "apple needs no key" and
+"voz needs no key".
 
 Run `speechkit providers` to see, per provider, what it supports and whether a
 credential was found on this machine right now (`env`, `keychain`, `none`, or
@@ -123,22 +129,23 @@ in a directory, so the run is refused before any upload.
 | Flag | Value | Default | Notes |
 | --- | --- | --- | --- |
 | `<files>` | one or more paths | — | Globs are expanded by the shell. A directory is rejected with a hint to use a glob. |
-| `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `apple` | `SPEECHKIT_PROVIDER` | Case-insensitive. Required when the variable is unset. |
+| `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `apple`, `voz` | `SPEECHKIT_PROVIDER` | Case-insensitive. Required when the variable is unset. |
 | `-l`, `--language` | language code | provider default | Repeatable. Only OpenAI and Gemini use more than the first value. |
-| `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. Ignored by Apple, which has none. |
+| `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. Ignored by Apple and VOZ, which have none. |
 | `--api-key` | string | — | Overrides the environment and keychain for this run. |
-| `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple. |
-| `--timeout` | seconds | 600 | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, and Apple. |
+| `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple and VOZ. |
+| `--timeout` | seconds | 600 | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, Apple, and VOZ. |
 | `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
 | `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs. |
 | `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. On OpenAI it selects `whisper-1`, the only model that returns them. |
-| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, and Apple. On OpenAI it selects `gpt-4o-transcribe-diarize`. |
+| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, Apple, and VOZ. On OpenAI it selects `gpt-4o-transcribe-diarize`. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
 | `-o`, `--output` | directory or file path | stdout | A directory (existing, or ending with `/`) takes any number of inputs and formats and is created if missing. A file path takes one input and one format. |
 | `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
 | `--cues` | `segments`, `words` | `segments` | `words` writes one cue per word in SRT and VTT. |
 | `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
 | `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
+| `--no-download` | flag | off | Fail with exit 3 instead of downloading a missing on-device model. VOZ only. |
 | `-j`, `--jobs` | integer | `2` | Concurrent uploads. Values above 8 are capped with a warning. |
 | `-v`, `--verbose` | flag | off | Per-file progress and timing to stderr. Per-provider notes print without it. |
 | `-q`, `--quiet` | flag | off | Suppress warnings and progress. Cannot be combined with `--verbose`. |
@@ -172,15 +179,19 @@ default model and where each credential was found.
 | `meta` | no | yes | yes | language names | 32 MB | wav |
 | `gemini` | yes | yes | yes | BCP-47 | no byte limit (one hour per file) | aac, aif, aiff, flac, m4a, mp3, mpeg, mpga, ogg, opus, wav, webm |
 | `apple` | yes | yes | no | `Locale` identifier | none | any |
+| `voz` | yes | yes | no | none (on-device model) | none; nothing is uploaded | any |
 
 Aqua and Cohere return text only, so `--format srt` or `--format vtt` with
 either is a usage error rather than a wasted upload. Meta returns speaker
-turns but no word timings, so `--words` is rejected there too.
+turns but no word timings, so `--words` is rejected there too. VOZ returns
+words and builds its segments from them with the cue builder, so
+`--max-cue-duration` and `--max-cue-chars` shape its subtitles.
 
 Use `speechkit languages <provider>` for the accepted `--language` values.
 Grok, Aqua, Cohere, and Meta print a fixed list; OpenAI and Gemini accept any
 code, so they print a note instead; Apple prints the locales this machine's
-transcriber actually supports. Region subtags such as `-US` are dropped before
+transcriber actually supports; ElevenLabs and VOZ say the flag is ignored.
+Region subtags such as `-US` are dropped before
 matching against a fixed list, so `pt-BR` and `pt` resolve the same way.
 
 ### Flags dropped per provider
@@ -199,10 +210,73 @@ than one input file, the note is prefixed with the file it came from.
 | `meta` | `--prompt` |
 | `gemini` | `--prompt`; `--keyword` is dropped when combined with `--diarize` or `--words`, which Gemini rejects |
 | `apple` | `--model`, `--endpoint`, `--timeout`, `--prompt` |
+| `voz` | `--model`, `--endpoint`, `--language`, `--timeout`, `--prompt`, `--keyword` |
 
 Aqua, Cohere, and ElevenLabs also note that the transcript is a single untimed
 segment, and Grok, Gemini, and ElevenLabs note when the provider returned no
 word timings and the transcript collapsed to one untimed segment.
+
+## VOZ on-device model
+
+`--provider voz` transcribes with the VOZ speech model through the
+[SpeechKit-Voz](../SpeechKit-Voz) package. No audio leaves the machine and no
+API key is involved, but the model is not bundled: the first run downloads
+roughly 467 MB, and the first load after that pays a one-time Neural Engine
+specialization that can take several minutes.
+
+Do the download once, deliberately, before you need it:
+
+```sh
+speechkit voz status              # model, whether it is cached, where it lives
+speechkit voz status --json
+speechkit voz prepare             # download if needed, then load once
+speechkit voz prepare --download-only   # fetch the files without loading them
+```
+
+`voz status` is the default subcommand, so plain `speechkit voz` reports.
+
+A `transcribe` run prepares the model itself if it has to, printing the size it
+is about to fetch and then a progress line that is rewritten in place on a
+terminal and printed every ten percent through a pipe. A script that must never
+trigger the download passes `--no-download`, which exits with code 3 and points
+at `speechkit voz prepare`:
+
+```sh
+speechkit transcribe talk.wav -p voz --no-download
+speechkit transcribe *.m4a -p voz -f srt -o subs/ --jobs 2
+```
+
+One model is loaded per `transcribe` invocation and shared by every file in the
+batch, however many `--jobs` are in flight, and it is released when the last
+file finishes. Inference itself is serialized inside SpeechKit-Voz, so `--jobs`
+overlaps file reading rather than running several Core ML sessions at once.
+
+SpeechKit-Voz declares SpeechKit by URL while this package declares it by path.
+SwiftPM lets the root package's path dependency win, so `swift build` resolves
+against the sibling `../SpeechKit` checkout and prints a "conflicting identity
+for speechkit" warning while doing it. The warning is expected; the build uses
+the local checkout.
+
+The model files live in the VOZ managed cache. SpeechKit-Voz resolves that
+location internally and publishes no accessor for it, so `voz status` names the
+cache rather than printing a path. The cache can be purged by the operating
+system; a later run simply downloads it again.
+
+VOZ runs one multilingual model that takes no language hint and reports no
+language, so `--language` is dropped with a note and `speechkit languages voz`
+says so. It returns word timings but no speaker labels or confidences, so
+`--diarize` is a usage error and JSON output carries `"language": null`.
+
+### License notice
+
+The VOZ runtime and model are **not** Apache 2.0. They are licensed under the
+Desert Ant Labs Source-Available License 1.0, which adds attribution,
+device-count, redistribution, and model-training obligations to anything that
+ships them, and the runtime may send the license's minimal device-counting
+telemetry (the license says that telemetry excludes inputs, outputs, and user
+content). Audio never leaves the machine either way. Read
+[SpeechKit-Voz's NOTICE.md](../SpeechKit-Voz/NOTICE.md) and the full terms at
+<https://license.desertant.com/1.0> before redistributing this tool.
 
 ## Output formats
 
@@ -240,7 +314,7 @@ times.
 | 0 | Every file succeeded. |
 | 1 | Usage or configuration error found before any work: bad flag combination, unsupported capability, invalid model or language, missing or unreadable input, unsupported extension, oversized file, existing output, or no timing data for a subtitle format. |
 | 2 | At least one file failed while others succeeded; the successful transcripts are still written and the failures are listed on stderr. |
-| 3 | No credential for the provider, `--provider apple` on macOS 15, or a keychain failure. |
+| 3 | No credential for the provider, `--provider apple` on macOS 15, a VOZ model that cannot be downloaded or loaded, `--no-download` with an uncached VOZ model, or a keychain failure. |
 
 Transcripts go to standard output unless `--output` is passed. Progress,
 warnings, and errors always go to standard error, so the tool stays pipeable.
@@ -290,6 +364,15 @@ instead:
 
 ```sh
 SPEECHKIT_INTEGRATION=1 swift test
+```
+
+The VOZ integration test needs the model on disk and never downloads it, so it
+runs only when both the switch is set and `speechkit voz prepare` has already
+been run:
+
+```sh
+speechkit voz prepare
+SPEECHKIT_VOZ_INTEGRATION=1 swift test
 ```
 
 ## Status

@@ -43,6 +43,17 @@ public struct Console: Sendable {
         Console.writeStandardError("speechkit: warning: \(message)\n")
     }
 
+    /// Prints a plain note to standard error unless `--quiet` was passed.
+    ///
+    /// Unlike ``progress(_:)`` this prints when standard error is a pipe, and
+    /// unlike ``warning(_:)`` it carries no `warning:` label. It is for the
+    /// things a run has to say whatever it is attached to, such as starting a
+    /// several-hundred-megabyte model download.
+    public func note(_ message: String) {
+        guard verbosity != .quiet else { return }
+        Console.writeStandardError("speechkit: " + message + "\n")
+    }
+
     /// Prints progress to standard error when attached to a terminal or when `--verbose` was passed.
     public func progress(_ message: String) {
         switch verbosity {

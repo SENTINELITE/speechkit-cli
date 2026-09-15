@@ -165,7 +165,7 @@ public enum LanguageMapping {
             return CohereLanguage.allCases.map(\.rawValue).sorted()
         case .meta:
             return metaLanguagesByCode.keys.sorted()
-        case .elevenlabs:
+        case .elevenlabs, .voz:
             return []
         case .openai, .gemini, .apple:
             return nil

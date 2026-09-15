@@ -64,7 +64,7 @@ public struct CredentialResolver: Sendable {
     /// - Returns: The credential, or `nil` for providers that need none.
     /// - Throws: ``CLIError/missingCredential(_:)`` when a key is required and none was found.
     public func resolve(provider: CLIProvider, flagAPIKey: String? = nil) throws -> SpeechCredential? {
-        guard provider != .apple else { return nil }
+        guard provider.requiresCredential else { return nil }
 
         if let key = nonEmpty(flagAPIKey) {
             return .apiKey(key)

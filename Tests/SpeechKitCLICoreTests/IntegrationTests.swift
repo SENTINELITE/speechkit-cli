@@ -1,4 +1,5 @@
 import Foundation
+import SpeechKitVoz
 import Testing
 @testable import SpeechKitCLICore
 
@@ -30,6 +31,23 @@ struct IntegrationTests {
         let name = CredentialResolver.environmentVariableName(for: provider)
         guard let value = ProcessInfo.processInfo.environment[name] else { return false }
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Returns `true` when `SPEECHKIT_VOZ_INTEGRATION` asks for the VOZ test.
+    static var wantsVozIntegration: Bool {
+        ProcessInfo.processInfo.environment["SPEECHKIT_VOZ_INTEGRATION"] == "1"
+    }
+
+    /// Returns `true` when the VOZ model is already downloaded.
+    ///
+    /// This is the second half of the gate, checked in the test body rather
+    /// than in a trait because building a `VozTranscriber` needs the main
+    /// actor and a trait condition is evaluated from a `Sendable` closure. A
+    /// test run must never trigger a 467 MB download, so an uncached model
+    /// means the test does nothing.
+    @MainActor
+    static var hasCachedVozModel: Bool {
+        VozTranscriber().isModelCached()
     }
 
     /// Returns `true` when this machine has Apple's local speech analyzer.
@@ -139,5 +157,14 @@ struct IntegrationTests {
     func apple() async throws {
         guard #available(macOS 26.0, *) else { return }
         Self.expectTranscript(try await Self.transcribe(.apple, languages: ["en-US"]), provider: .apple)
+    }
+
+    @Test(
+        "VOZ transcribes a spoken sample",
+        .enabled(if: IntegrationTests.wantsVozIntegration)
+    )
+    func voz() async throws {
+        guard await Self.hasCachedVozModel else { return }
+        Self.expectTranscript(try await Self.transcribe(.voz), provider: .voz)
     }
 }

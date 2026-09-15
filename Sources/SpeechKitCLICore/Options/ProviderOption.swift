@@ -20,6 +20,8 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
     case gemini
     /// Apple's local Speech framework.
     case apple
+    /// The on-device VOZ model.
+    case voz
 
     /// Creates a provider from a case-insensitive argument.
     public init?(argument: String) {
@@ -32,7 +34,10 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
     }
 
     /// The matching SpeechKit file transcription provider.
-    public var speechKitProvider: SpeechFileTranscriptionProvider {
+    ///
+    /// This is `nil` for VOZ, which lives in the separate SpeechKit-Voz package
+    /// and therefore has no case in SpeechKit's own provider enumeration.
+    public var speechKitProvider: SpeechFileTranscriptionProvider? {
         switch self {
         case .elevenlabs: return .elevenLabs
         case .aqua: return .aqua
@@ -42,6 +47,18 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
         case .meta: return .meta
         case .gemini: return .gemini
         case .apple: return .apple
+        case .voz: return nil
+        }
+    }
+
+    /// Whether the provider needs an API key.
+    ///
+    /// Apple and VOZ both transcribe on device, so neither takes a credential,
+    /// and `speechkit keys` refuses to store one for them.
+    public var requiresCredential: Bool {
+        switch self {
+        case .apple, .voz: return false
+        default: return true
         }
     }
 
@@ -56,6 +73,7 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
         case .meta: return "Meta"
         case .gemini: return "Gemini"
         case .apple: return "Apple"
+        case .voz: return "VOZ"
         }
     }
 }

@@ -124,7 +124,12 @@ public struct Keys: ParsableCommand {
 /// path against an in-memory store rather than the login keychain.
 public struct KeysRunner: Sendable {
     /// The message printed when a key operation names Apple.
-    public static let appleMessage = "apple needs no key"
+    public static let appleMessage = keylessMessage(.apple)
+
+    /// The refusal for a provider that transcribes on device.
+    public static func keylessMessage(_ provider: CLIProvider) -> String {
+        "\(provider.rawValue) needs no key"
+    }
 
     private let store: any KeychainStoring
     private let environment: [String: String]
@@ -192,7 +197,7 @@ public struct KeysRunner: Sendable {
         let stored = Swift.Set(try store.list())
         let rows = CLIProvider.allCases.map { provider -> [String] in
             let variable = CredentialResolver.environmentVariableName(for: provider)
-            guard provider != .apple else {
+            guard provider.requiresCredential else {
                 return [provider.rawValue, "n/a", "-"]
             }
             let override = environment[variable]?
@@ -246,8 +251,8 @@ public struct KeysRunner: Sendable {
     }
 
     private func requireKeyedProvider(_ provider: CLIProvider) throws {
-        guard provider != .apple else {
-            throw CLIError.usage(Self.appleMessage)
+        guard provider.requiresCredential else {
+            throw CLIError.usage(Self.keylessMessage(provider))
         }
     }
 }

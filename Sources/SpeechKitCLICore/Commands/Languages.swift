@@ -59,6 +59,13 @@ public struct LanguageReport: Sendable, Codable, Equatable {
                 note: "elevenlabs Scribe detects the language itself; --language is ignored with a warning.",
                 values: []
             )
+        case .voz:
+            return LanguageReport(
+                provider: provider.rawValue,
+                style: style,
+                note: "voz runs one multilingual model that does not take a language hint and does not report the language it heard; --language is ignored with a warning.",
+                values: []
+            )
         case .apple:
             if let appleLocales {
                 return LanguageReport(
