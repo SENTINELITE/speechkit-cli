@@ -2,7 +2,15 @@
 
 ## 0.6.0 — 2026-09-15
 
-`speechkit bench` compares providers over the same audio.
+`speechkit bench` compares providers over the same audio, and `speechkit keys
+check` verifies credentials in bulk.
+
+- `speechkit keys check [providers...]` reports where every provider's API key
+  comes from (environment, keychain, none, or not needed) as a table or
+  `--json`, with keys redacted. `--live` verifies each key by transcribing a
+  short generated clip, adding status, timing, and error detail. Exits `0`
+  when every requested provider is usable, `2` when a live check failed, and
+  `3` when a key is missing.
 
 - `speechkit bench <files or folders> -p <provider> ... -o <directory>` runs the
   same recordings through several providers and writes `<stem>.<provider>.txt`

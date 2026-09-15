@@ -93,6 +93,42 @@ Run `speechkit providers` to see, per provider, what it supports and whether a
 credential was found on this machine right now (`env`, `keychain`, `none`, or
 `not needed`). Add `--json` for machine-readable output.
 
+### Checking keys in bulk
+
+`speechkit keys check` reports where every provider's key would come from,
+without contacting anyone:
+
+```console
+$ speechkit keys check
+PROVIDER    SOURCE      ENV VAR                       KEY
+elevenlabs  keychain    SPEECHKIT_ELEVENLABS_API_KEY  ••••4f2a
+openai      env         SPEECHKIT_OPENAI_API_KEY      ••••91ab
+aqua        none        SPEECHKIT_AQUA_API_KEY        -
+apple       not needed  -                             -
+voz         not needed  -                             -
+```
+
+Name providers to narrow it (`speechkit keys check openai grok`); no argument,
+or `all`, checks every provider. Keys are always redacted to their last four
+characters.
+
+`--live` verifies each key by transcribing a short clip generated on the fly
+with `say` and `afconvert`, adding `STATUS` (`ok`, `failed`, `skipped`), `TIME`,
+and `DETAIL` columns. Network providers are checked four at a time; Apple and
+VOZ run on device. A VOZ model that is not downloaded is reported `skipped`
+rather than fetched, so a check never triggers the model download.
+
+```console
+$ speechkit keys check openai --live
+PROVIDER  SOURCE  ENV VAR                   KEY       STATUS  TIME  DETAIL
+openai    env     SPEECHKIT_OPENAI_API_KEY  ••••1234  failed  0.3   openAI upload failed: { "error": { "message": "Incorrect ...
+```
+
+`--json` emits the same rows as an array of objects, with the untruncated
+`detail`. Exit codes: `0` when every requested provider is usable, `2` when a
+live check failed, and `3` when any requested provider has no key. Run it
+before a `bench` to know which providers will take part.
+
 ## Quick start
 
 ```sh
