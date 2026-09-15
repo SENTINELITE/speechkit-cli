@@ -73,7 +73,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
         case .elevenlabs:
             // ElevenLabs checks size and duration but not the extension.
             return ProviderCapabilities(
-                defaultFileModel: ElevenLabsModelID.scribeV1.rawValue,
+                defaultFileModel: ElevenLabsModelID.scribeV2.rawValue,
                 supportsWordTimestamps: true,
                 supportsSegments: true,
                 supportsDiarization: false,

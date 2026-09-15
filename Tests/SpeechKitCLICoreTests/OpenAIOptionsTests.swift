@@ -32,10 +32,11 @@ struct OpenAIOptionsTests {
         #expect(resolved.warnings.isEmpty)
     }
 
-    @Test("--words with no --model flips the default to whisper-1")
+    @Test("--words with no --model flips the default to whisper-1 and notes its shutdown")
     func wordsFlipsDefault() throws {
         let resolved = try resolve(words: true)
-        #expect(resolved.modelID == .whisper1)
+        #expect(resolved.modelID == OpenAIRunner.wordsModelID)
+        #expect(resolved.warnings.contains { $0.contains("February 26, 2027") })
         #expect(resolved.timestampGranularities == [.word, .segment])
         #expect(resolved.prompt == nil)
     }
@@ -57,7 +58,7 @@ struct OpenAIOptionsTests {
     @Test("--diarize with no --model selects the diarizing model and its chunking strategy")
     func diarizeSelectsModel() throws {
         let resolved = try resolve(diarize: true)
-        #expect(resolved.modelID == .gpt4oTranscribeDiarize)
+        #expect(resolved.modelID == OpenAIRunner.diarizeModelID)
         #expect(resolved.diarizes)
         #expect(resolved.diarizationChunkingStrategy != nil)
         #expect(resolved.timestampGranularities.isEmpty)
@@ -77,9 +78,10 @@ struct OpenAIOptionsTests {
         let resolved = try resolve(model: "gpt-4o-transcribe-diarize", words: true, prompt: "a hint")
         #expect(resolved.prompt == nil)
         #expect(resolved.timestampGranularities.isEmpty)
-        #expect(resolved.warnings.count == 2)
-        #expect(resolved.warnings[0].contains("--prompt"))
-        #expect(resolved.warnings[1].contains("--words"))
+        #expect(resolved.warnings.count == 3)
+        #expect(resolved.warnings[0].contains("February 26, 2027"))
+        #expect(resolved.warnings[1].contains("--prompt"))
+        #expect(resolved.warnings[2].contains("--words"))
     }
 
     @Test("A chunking strategy is sent only under the diarizing model")

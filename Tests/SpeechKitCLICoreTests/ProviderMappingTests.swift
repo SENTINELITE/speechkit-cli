@@ -58,7 +58,7 @@ struct ProviderMappingTests {
     @Test("OpenAI diarized segments carry speakers and the first detected language")
     func openAIDiarizedMapping() throws {
         let response = try Fixture.decode(OpenAIFileTranscriptionResponse.self, from: "openai-diarized-response")
-        let document = OpenAIRunner.map(response, file: file, modelID: .gpt4oTranscribeDiarize)
+        let document = OpenAIRunner.map(response, file: file, modelID: OpenAIRunner.diarizeModelID)
 
         #expect(document.language == "en")
         #expect(document.segments.map(\.speaker) == ["A", "B"])
@@ -178,10 +178,10 @@ struct ProviderMappingTests {
     @Test("ElevenLabs spacing tokens stay out of words and segments")
     func elevenLabsMapping() throws {
         let response = try Fixture.decode(ElevenLabsFileTranscriptionResponse.self, from: "elevenlabs-response")
-        let document = ElevenLabsRunner.map(response, file: file, modelID: .scribeV1)
+        let document = ElevenLabsRunner.map(response, file: file, modelID: .scribeV2)
 
         #expect(document.provider == "elevenlabs")
-        #expect(document.model == "scribe_v1")
+        #expect(document.model == "scribe_v2")
         #expect(document.language == "eng")
         #expect(document.duration == 2.2)
         #expect(document.words.count == 5)
@@ -320,8 +320,8 @@ struct ProviderMappingTests {
         #expect(narrow.segments.count == narrow.words.count)
 
         let scribe = try Fixture.decode(ElevenLabsFileTranscriptionResponse.self, from: "elevenlabs-response")
-        let wideScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV1)
-        let narrowScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV1, cueBuilder: tight)
+        let wideScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV2)
+        let narrowScribe = ElevenLabsRunner.map(scribe, file: file, modelID: .scribeV2, cueBuilder: tight)
         #expect(narrowScribe.segments.count > wideScribe.segments.count)
         #expect(narrowScribe.segments.count == narrowScribe.words.count)
     }

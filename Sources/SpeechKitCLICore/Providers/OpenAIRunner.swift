@@ -7,7 +7,23 @@ public struct OpenAIRunner: ProviderRunner {
     public static let provider: CLIProvider = .openai
 
     /// The model that returns speaker-labelled segments.
-    static let diarizeModelID: OpenAIFileTranscriptionModelID = .gpt4oTranscribeDiarize
+    ///
+    /// SpeechKit deprecates this case because OpenAI shuts the model down on
+    /// February 26, 2027, but it is still the only file model that diarizes, so
+    /// it is looked up by raw value to keep the build free of the warning. The
+    /// fallback never runs; the raw value is a case of the enum.
+    public static let diarizeModelID = OpenAIFileTranscriptionModelID(rawValue: "gpt-4o-transcribe-diarize") ?? .gptTranscribe
+
+    /// The model that returns word timestamps.
+    ///
+    /// Deprecated in SpeechKit for the same shutdown date, and still the only
+    /// file model that accepts timestamp granularities.
+    public static let wordsModelID = OpenAIFileTranscriptionModelID(rawValue: "whisper-1") ?? .gptTranscribe
+
+    /// The note added when the CLI picks one of the models OpenAI is retiring.
+    static func shutdownWarning(for modelID: OpenAIFileTranscriptionModelID) -> String {
+        "OpenAI shuts down \(modelID.rawValue) on February 26, 2027. Until a current model returns the same data, this run uses it."
+    }
 
     /// What one run sends to OpenAI, after the model and the flags are reconciled.
     ///
@@ -117,13 +133,16 @@ public struct OpenAIRunner: ProviderRunner {
         if wantsDiarization {
             defaultModel = diarizeModelID
         } else if wantsWords {
-            defaultModel = .whisper1
+            defaultModel = wordsModelID
         } else {
             defaultModel = .gptTranscribe
         }
         let modelID = try RunnerSupport.resolveModel(model, default: defaultModel, provider: .openai)
 
         var warnings: [String] = []
+        if modelID == diarizeModelID || modelID == wordsModelID {
+            warnings.append(shutdownWarning(for: modelID))
+        }
         if modelID == diarizeModelID {
             // The diarizing model takes neither a prompt nor granularities, and
             // SpeechKit refuses the request outright when either is present.
@@ -149,7 +168,7 @@ public struct OpenAIRunner: ProviderRunner {
                 "openai returns speaker labels from \(diarizeModelID.rawValue) only, so --diarize cannot be combined with --model \(modelID.rawValue)."
             )
         }
-        if wantsWords, modelID != .whisper1 {
+        if wantsWords, modelID != wordsModelID {
             throw CLIError.usage(
                 "openai returns word timestamps from whisper-1 only, so --words and subtitle formats cannot be combined with --model \(modelID.rawValue). Pass --model whisper-1."
             )

@@ -62,7 +62,7 @@ struct RunnerSupportTests {
         let error = #expect(throws: CLIError.self) {
             _ = try RunnerSupport.resolveModel(
                 ElevenLabsModelID.scribeV2Realtime.rawValue,
-                default: ElevenLabsModelID.scribeV1,
+                default: ElevenLabsModelID.scribeV2,
                 provider: .elevenlabs,
                 allowed: ElevenLabsRunner.fileModelIDs
             )

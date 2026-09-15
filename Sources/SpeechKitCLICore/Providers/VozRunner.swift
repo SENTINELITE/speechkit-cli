@@ -75,24 +75,23 @@ public final class VozRunner: ProviderRunner {
             )
         }
 
-        var document = Self.map(
+        let document = Self.map(
             response,
             file: file,
             warnings: warnings,
             cueBuilder: context.cueBuilder
         )
-        // A timing note is detail, not a problem, so it only appears when the
-        // run asked for detail.
-        if context.console.verbosity == .verbose {
-            document.warnings.append(
-                String(
-                    format: "VOZ transcribed %.1f s of audio in %.1f s (%.1fx realtime).",
-                    response.duration,
-                    response.processingTime,
-                    response.realtimeFactor
-                )
+        // A timing note is detail, not a problem, so it goes through the
+        // verbose channel rather than the warnings list.
+        context.console.verbose(
+            String(
+                format: "%@: VOZ transcribed %.1f s of audio in %.1f s (%.1fx realtime).",
+                file.lastPathComponent,
+                response.duration,
+                response.processingTime,
+                response.realtimeFactor
             )
-        }
+        )
         return document
     }
 

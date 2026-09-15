@@ -10,7 +10,10 @@ public struct ElevenLabsRunner: ProviderRunner {
     ///
     /// The realtime Scribe model is rejected by the upload endpoint, so it is
     /// not offered here.
-    public static let fileModelIDs: [ElevenLabsModelID] = [.scribeV1, .scribeV2]
+    ///
+    /// Scribe v1 is listed by raw value: SpeechKit deprecates it ahead of
+    /// ElevenLabs removing it on July 9, 2026, but it still transcribes today.
+    public static let fileModelIDs: [ElevenLabsModelID] = ["scribe_v1", "scribe_v2"].compactMap(ElevenLabsModelID.init(rawValue:))
 
     /// The token types ElevenLabs uses for whitespace between words.
     private static let spacingTypes: Set<String> = ["spacing", "space"]
@@ -63,7 +66,7 @@ public struct ElevenLabsRunner: ProviderRunner {
     private func resolvedModelID() throws -> ElevenLabsModelID {
         try RunnerSupport.resolveModel(
             context.model,
-            default: .scribeV1,
+            default: .scribeV2,
             provider: Self.provider,
             allowed: Self.fileModelIDs
         )
