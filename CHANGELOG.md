@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2 — 2026-10-25
+
+- A pause no longer breaks a sentence when the next word starts in lowercase,
+  since VOZ capitalises the first word of a new sentence. "I just wish there
+  was one", a pause, and "clear cut goalpost I could chase." is now one line.
+  On the 35-minute test recording, lines broken mid-sentence went from 23 to
+  13; the rest come before a capitalised word or a silence over 10 seconds.
+
 ## 0.10.1 — 2026-10-25
 
 Smoother sentence text.

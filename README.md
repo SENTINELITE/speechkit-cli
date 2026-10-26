@@ -695,9 +695,10 @@ uses the same rules whatever `--cues` says. A new sentence starts when:
 
 - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
   abbreviation such as `Mr.` or `Dr.`
-- the speaker paused for more than 2 seconds after at least three words, which
-  catches trailing off without punctuation while keeping a lone "So" or "Um"
-  attached to what follows
+- the speaker paused for more than 2 seconds after at least three words, and
+  the next word is not lowercase. That catches trailing off without
+  punctuation, while a lone "So" or "Um", or a clause that carries on in
+  lowercase after the pause, stays on one line
 - the speaker paused for more than 10 seconds, however short the sentence
 - the speaker changes
 - the sentence is past 160 characters and the previous word ends in `,`, `;`,

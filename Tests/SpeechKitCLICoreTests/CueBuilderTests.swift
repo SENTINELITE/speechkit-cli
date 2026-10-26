@@ -246,10 +246,10 @@ struct CueBuilderTests {
             word("not", 1.5, 1.7),
             word("sure,", 1.8, 2.0),
             word("but", 2.1, 2.3),
-            word("this", 4.4, 4.6),
+            word("This", 4.4, 4.6),
             word("works.", 4.7, 5.0),
         ])
-        #expect(sentences.map(\.text) == ["I'm not sure, but", "this works."])
+        #expect(sentences.map(\.text) == ["I'm not sure, but", "This works."])
     }
 
     @Test("A pause after one or two words joins them to the next sentence")
@@ -262,6 +262,20 @@ struct CueBuilderTests {
         ])
         #expect(sentences.map(\.text) == ["How I'm so tired."])
         #expect(sentences.first?.start == 14.3)
+    }
+
+    @Test("A pause before a lowercase word keeps the sentence together")
+    func sentencePauseBeforeLowercase() {
+        let sentences = CueBuilder().sentences(from: [
+            word("I", 0, 0.2),
+            word("wish", 0.3, 0.5),
+            word("there", 0.6, 0.8),
+            word("was", 0.9, 1.0),
+            word("one", 1.1, 1.3),
+            word("clear", 4.4, 4.6),
+            word("goalpost.", 4.7, 5.0),
+        ])
+        #expect(sentences.map(\.text) == ["I wish there was one clear goalpost."])
     }
 
     @Test("A very long silence splits even a one-word sentence")

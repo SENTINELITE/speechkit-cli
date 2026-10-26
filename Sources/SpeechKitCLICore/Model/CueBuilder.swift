@@ -155,9 +155,10 @@ public struct CueBuilder: Sendable {
     /// - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
     ///   abbreviation such as `Mr.`
     /// - the gap to the previous word is longer than ``sentenceGapThreshold``
-    ///   and the sentence already has ``minWordsBeforePause`` words, which
-    ///   catches a speaker trailing off without punctuation while keeping a
-    ///   lone "So" or "Um" attached to what follows it
+    ///   , the sentence already has ``minWordsBeforePause`` words, and the next
+    ///   word does not start in lowercase. That catches a speaker trailing off
+    ///   without punctuation, while a lone "So" or "Um", or a clause that
+    ///   carries on in lowercase after the pause, stays on one line
     /// - the gap is longer than ``longPauseThreshold``, however short the sentence
     /// - the speaker changes
     /// - the sentence is past ``sentenceSoftChars`` and the previous word ends a
@@ -268,7 +269,9 @@ public struct CueBuilder: Sendable {
         if Self.endsSentence(previous.text), !Self.isAbbreviation(previous.text) { return true }
         let gap = word.start - previous.effectiveEnd
         if gap > longPauseThreshold { return true }
-        if gap > sentenceGapThreshold, wordCount >= minWordsBeforePause { return true }
+        if gap > sentenceGapThreshold, wordCount >= minWordsBeforePause, !Self.continuesSentence(word.text) {
+            return true
+        }
         if previous.speaker != word.speaker { return true }
         if sentenceText.count >= sentenceSoftChars, Self.endsClause(previous.text) { return true }
         if sentenceText.count + 1 + word.text.count > maxSentenceChars { return true }
@@ -339,6 +342,16 @@ public struct CueBuilder: Sendable {
     private static func endsClause(_ text: String) -> Bool {
         guard let last = text.last else { return false }
         return clauseEndings.contains(last)
+    }
+
+    /// Returns whether a word reads as the middle of a sentence: it starts with
+    /// a lowercase letter, after any opening quote or bracket.
+    ///
+    /// Providers that punctuate capitalise the first word of a sentence, so a
+    /// lowercase word after a pause is the same sentence carrying on.
+    private static func continuesSentence(_ text: String) -> Bool {
+        guard let first = text.first(where: { $0.isLetter || $0.isNumber }) else { return false }
+        return first.isLowercase
     }
 
     /// Returns whether a word is an abbreviation whose full stop ends no sentence.
