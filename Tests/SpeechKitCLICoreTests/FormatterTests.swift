@@ -84,6 +84,65 @@ struct FormatterTests {
         #expect(rendered == "A: Hello there.\n\nB: How are you?\n")
     }
 
+    @Test("Timestamped text writes one sentence per line from the words")
+    func plainTextTimestamped() throws {
+        let rendered = try PlainTextFormatter(includesTimestamps: true).render(SubtitleSample.document)
+        #expect(rendered == "0:01.5  How is the weather?\n0:05.0  It is sunny today.\n")
+    }
+
+    @Test("Timestamped text labels speakers after the time")
+    func plainTextTimestampedDiarized() throws {
+        let rendered = try PlainTextFormatter(includesSpeakerLabels: true, includesTimestamps: true)
+            .render(SubtitleSample.document)
+        #expect(rendered == "0:01.5  A: How is the weather?\n0:05.0  B: It is sunny today.\n")
+    }
+
+    @Test("Timestamped text falls back to segments without words")
+    func plainTextTimestampedFromSegments() throws {
+        var sample = document
+        sample.words = []
+        let rendered = try PlainTextFormatter(includesTimestamps: true).render(sample)
+        #expect(rendered == "0:00.0  Hello there.\n0:01.4  How are you?\n")
+    }
+
+    @Test("Timestamped text falls back to prose without timings")
+    func plainTextTimestampedUntimed() throws {
+        let rendered = try PlainTextFormatter(includesTimestamps: true).render(SubtitleSample.untimed)
+        #expect(rendered == SubtitleSample.untimed.text + "\n")
+    }
+
+    @Test("Times are padded so the text lines up")
+    func plainTextTimestampPadding() throws {
+        let sample = TranscriptDocument(
+            provider: "voz",
+            sourceFile: "/tmp/talk.wav",
+            text: "One. Two.",
+            words: [
+                TranscriptDocument.Word(text: "One.", start: 5, end: 5.5),
+                TranscriptDocument.Word(text: "Two.", start: 615, end: 615.5),
+            ]
+        )
+        let rendered = try PlainTextFormatter(includesTimestamps: true).render(sample)
+        #expect(rendered == " 0:05.0  One.\n10:15.0  Two.\n")
+    }
+
+    @Test("The registry passes timestamps through to plain text")
+    func registryTimestamps() throws {
+        let formatter = try FormatterRegistry.makeFormatter(for: .txt, includesTimestamps: true)
+        #expect(try formatter.render(SubtitleSample.document).hasPrefix("0:01.5  "))
+    }
+
+    @Test("Reading timestamps truncate to tenths and grow an hour field")
+    func clock() {
+        #expect(TimecodeFormatter.clock(0) == "0:00.0")
+        #expect(TimecodeFormatter.clock(-3) == "0:00.0")
+        #expect(TimecodeFormatter.clock(.nan) == "0:00.0")
+        #expect(TimecodeFormatter.clock(0.7) == "0:00.7")
+        #expect(TimecodeFormatter.clock(59.99) == "0:59.9")
+        #expect(TimecodeFormatter.clock(405.8) == "6:45.8")
+        #expect(TimecodeFormatter.clock(3723.45) == "1:02:03.4")
+    }
+
     @Test("Speaker labels run past Z")
     func speakerLabels() {
         #expect(SpeakerLabels.label(at: 0) == "A")

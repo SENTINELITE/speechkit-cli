@@ -61,7 +61,8 @@ struct TranscribeParsingTests {
     func defaults() throws {
         let command = try Transcribe.parse(["a.wav"])
         #expect(command.outputOptions.resolvedFormats == [.txt])
-        #expect(command.cues == .segments)
+        #expect(command.cues == nil)
+        #expect(command.outputOptions.noTimestamps == false)
         #expect(command.maxCueDuration == 7)
         #expect(command.maxCueChars == 84)
         #expect(command.jobs == 2)
@@ -117,6 +118,60 @@ struct TranscribeParsingTests {
     func cuesSegments() throws {
         let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt"])
         #expect(try command.cueAdjusted(SubtitleSample.document) == SubtitleSample.document)
+    }
+
+    @Test("Sentences are the default cue mode for VOZ and segments for everyone else")
+    func defaultCueMode() throws {
+        let command = try Transcribe.parse(["a.wav"])
+        #expect(command.cueMode(for: .voz) == .sentences)
+        #expect(command.cueMode(for: .grok) == .segments)
+        #expect(command.cueMode(for: nil) == .segments)
+        let explicit = try Transcribe.parse(["a.wav", "--cues", "segments"])
+        #expect(explicit.cueMode(for: .voz) == .segments)
+    }
+
+    @Test("--cues sentences rebuilds the segments from words for every format")
+    func cuesSentences() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "json", "--cues", "sentences"])
+        var document = SubtitleSample.document
+        document.segments = [TranscriptDocument.Segment(start: 1.52, end: 7.25, text: document.text)]
+        let adjusted = try command.cueAdjusted(document)
+        #expect(adjusted.segments.map(\.text) == ["How is the weather?", "It is sunny today."])
+        #expect(adjusted.segments.map(\.start) == [1.52, 5])
+    }
+
+    @Test("VOZ gets sentences without asking")
+    func vozSentencesByDefault() throws {
+        let command = try Transcribe.parse(["a.wav", "-p", "voz", "-f", "txt"])
+        var document = SubtitleSample.document
+        document.segments = []
+        let adjusted = try command.cueAdjusted(document)
+        #expect(adjusted.segments.count == 2)
+    }
+
+    @Test("An explicit --cues sentences needs word timings; the VOZ default does not")
+    func cuesSentencesWithoutWords() throws {
+        var document = SubtitleSample.document
+        document.words = []
+        let explicit = try Transcribe.parse(["a.wav", "-p", "grok", "-f", "srt", "--cues", "sentences"])
+        #expect(throws: CLIError.self) {
+            _ = try explicit.cueAdjusted(document)
+        }
+        let implicit = try Transcribe.parse(["a.wav", "-p", "voz"])
+        #expect(try implicit.cueAdjusted(document) == document)
+    }
+
+    @Test("--cues sentences asks the word-segment providers for words")
+    func sentencesWantWords() {
+        #expect(Transcribe.wantsWords(requested: false, formats: [.txt], provider: .grok, cueMode: .sentences))
+        #expect(!Transcribe.wantsWords(requested: false, formats: [.txt], provider: .grok, cueMode: .segments))
+        #expect(!Transcribe.wantsWords(requested: false, formats: [.txt], provider: .meta, cueMode: .sentences))
+    }
+
+    @Test("--no-timestamps parses")
+    func noTimestamps() throws {
+        let command = try Transcribe.parse(["a.wav", "--no-timestamps"])
+        #expect(command.outputOptions.noTimestamps)
     }
 
     @Test("The run context carries the cue limits and mode")

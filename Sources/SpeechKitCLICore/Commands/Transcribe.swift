@@ -24,9 +24,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     /// Output destination flags.
     @OptionGroup public var outputOptions: OutputOptions
 
-    /// How subtitle cues are split.
-    @Option(name: .long, help: "Cue source for subtitles: segments or words.")
-    public var cues: CueMode = .segments
+    /// How segments and subtitle cues are split. `nil` picks the provider's default.
+    @Option(name: .long, help: "Cue source: segments, sentences, or words. Defaults to sentences for VOZ and segments otherwise.")
+    public var cues: CueMode?
 
     /// The longest subtitle cue, in seconds.
     @Option(name: .long, help: "Longest subtitle cue, in seconds.")
@@ -143,12 +143,13 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             wantsWords: Self.wantsWords(
                 requested: transcription.words,
                 formats: outputOptions.resolvedFormats,
-                provider: provider
+                provider: provider,
+                cueMode: cueMode(for: provider)
             ),
             wantsDiarization: transcription.diarize,
             maxCueDuration: maxCueDuration,
             maxCueChars: maxCueChars,
-            cueMode: cues,
+            cueMode: cueMode(for: provider),
             allowsModelDownload: !transcription.noDownload,
             console: console
         )
@@ -198,6 +199,9 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         if transcription.words, !capabilities.supportsWordTimestamps {
             throw CLIError.unsupportedCapability(provider: provider, capability: "word timestamps")
         }
+        if cues == .sentences, !capabilities.supportsWordTimestamps {
+            throw CLIError.unsupportedCapability(provider: provider, capability: "sentence cues")
+        }
         if transcription.diarize, !capabilities.supportsDiarization {
             throw CLIError.unsupportedCapability(provider: provider, capability: "speaker labels")
         }
@@ -234,10 +238,28 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     ///   - requested: Whether `--words` was passed.
     ///   - formats: The requested output formats.
     ///   - provider: The resolved provider.
-    static func wantsWords(requested: Bool, formats: [OutputFormat], provider: CLIProvider) -> Bool {
+    ///   - cueMode: The resolved cue mode. Sentences are built from words, so
+    ///     they need the request just as subtitles do.
+    static func wantsWords(
+        requested: Bool,
+        formats: [OutputFormat],
+        provider: CLIProvider,
+        cueMode: CueMode = .segments
+    ) -> Bool {
         if requested { return true }
-        guard formats.contains(where: \.requiresTimings) else { return false }
+        guard cueMode == .sentences || formats.contains(where: \.requiresTimings) else { return false }
         return wordSegmentProviders.contains(provider)
+    }
+
+    /// Returns the cue mode for a provider: `--cues` when passed, and otherwise
+    /// sentences for VOZ and segments for everyone else.
+    ///
+    /// VOZ returns words only, so its segments are built by the CLI either way,
+    /// and sentences read better than pause-sized fragments. The cloud
+    /// providers keep their segments, which some of them send themselves.
+    func cueMode(for provider: CLIProvider?) -> CueMode {
+        if let cues { return cues }
+        return provider == .voz ? .sentences : .segments
     }
 
     /// Rejects two inputs that would write over each other.
@@ -287,7 +309,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         let task = console.task("\(position) transcribing")
         do {
             let transcribed = try await runner.transcribe(file: input)
-            let document = try cueAdjusted(transcribed)
+            let document = try cueAdjusted(transcribed, provider: provider)
             await task.update(label: "\(position) writing")
             // Notes belong at normal verbosity: "--language was ignored" is not
             // a detail the run can afford to hide behind --verbose.
@@ -301,6 +323,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
                     for: format,
                     includesSpeakerLabels: transcription.diarize,
                     includesWordTimings: transcription.words,
+                    includesTimestamps: !outputOptions.noTimestamps,
                     cueBuilder: cueBuilder
                 )
                 let text = try formatter.render(document)
@@ -444,12 +467,35 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         CueBuilder(maxCueDuration: maxCueDuration, maxCueChars: maxCueChars)
     }
 
-    /// Returns the document with one cue per word when `--cues words` is set.
+    /// Returns the document with its segments rebuilt for the cue mode.
     ///
-    /// - Throws: ``CLIError/usage(_:)`` when the provider returned no word
-    ///   timings to build word cues from.
-    func cueAdjusted(_ document: TranscriptDocument) throws -> TranscriptDocument {
-        guard cues == .words, outputOptions.resolvedFormats.contains(where: \.requiresTimings) else {
+    /// `--cues sentences` replaces the segments with one per sentence, for every
+    /// format, so JSON carries the same sentences the subtitles do. `--cues
+    /// words` replaces them with one per word, and only when a subtitle format
+    /// was asked for.
+    ///
+    /// - Parameters:
+    ///   - document: The provider's transcript.
+    ///   - provider: The resolved provider, which picks the default cue mode.
+    ///     `nil` uses `--provider`.
+    /// - Throws: ``CLIError/usage(_:)`` when `--cues words` or an explicit
+    ///   `--cues sentences` meets a provider that returned no word timings.
+    func cueAdjusted(_ document: TranscriptDocument, provider: CLIProvider? = nil) throws -> TranscriptDocument {
+        let mode = cueMode(for: provider ?? self.provider)
+        if mode == .sentences {
+            guard document.words.contains(where: { $0.start != nil }) else {
+                // The VOZ default should never fail a run; only an explicit
+                // request that cannot be met is an error.
+                guard cues == .sentences else { return document }
+                throw CLIError.usage(
+                    "--cues sentences needs word timings, and \(document.provider) returned none. Pass --words, or use --cues segments."
+                )
+            }
+            var document = document
+            document.segments = RunnerSupport.orderedSegments(cueBuilder.sentences(from: document.words))
+            return document
+        }
+        guard mode == .words, outputOptions.resolvedFormats.contains(where: \.requiresTimings) else {
             return document
         }
         guard !document.words.isEmpty else {

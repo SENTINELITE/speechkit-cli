@@ -26,11 +26,26 @@ public struct CueBuilder: Sendable {
     public var gapThreshold: Double = 0.8
     /// How long a cue must run before sentence-ending punctuation splits it.
     public var minSentenceCueDuration: Double = 1.5
+    /// The silence between words, in seconds, that ends a sentence even without punctuation.
+    public var sentenceGapThreshold: Double = 2
+    /// The length, in characters, past which a sentence breaks at the next comma.
+    public var sentenceSoftChars: Int = 160
+    /// The most characters a sentence may carry before it is cut mid-clause.
+    public var maxSentenceChars: Int = 300
+    /// The longest a sentence may run, in seconds, before it is cut mid-clause.
+    public var maxSentenceDuration: Double = 30
 
     /// The duration given to a word whose end the provider omitted.
     private static let assumedWordDuration: Double = 1.0
 
     private static let sentenceEndings: Set<Character> = [".", "?", "!", "\u{2026}"]
+
+    private static let clauseEndings: Set<Character> = [",", ";", ":", "\u{2014}", "\u{2013}"]
+
+    /// Words whose full stop is an abbreviation rather than the end of a sentence.
+    private static let abbreviations: Set<String> = [
+        "mr.", "mrs.", "ms.", "dr.", "prof.", "st.", "jr.", "sr.", "vs.", "e.g.", "i.e.",
+    ]
 
     /// Creates a cue builder.
     ///
@@ -40,18 +55,30 @@ public struct CueBuilder: Sendable {
     ///   - maxLineChars: The most characters one rendered line may carry.
     ///   - gapThreshold: The silence between words that forces a new cue.
     ///   - minSentenceCueDuration: How long a cue must run before punctuation splits it.
+    ///   - sentenceGapThreshold: The silence that ends a sentence without punctuation.
+    ///   - sentenceSoftChars: The length past which a sentence breaks at a comma.
+    ///   - maxSentenceChars: The most characters a sentence may carry.
+    ///   - maxSentenceDuration: The longest a sentence may run, in seconds.
     public init(
         maxCueDuration: Double = 7,
         maxCueChars: Int = 84,
         maxLineChars: Int = 42,
         gapThreshold: Double = 0.8,
-        minSentenceCueDuration: Double = 1.5
+        minSentenceCueDuration: Double = 1.5,
+        sentenceGapThreshold: Double = 2,
+        sentenceSoftChars: Int = 160,
+        maxSentenceChars: Int = 300,
+        maxSentenceDuration: Double = 30
     ) {
         self.maxCueDuration = maxCueDuration
         self.maxCueChars = maxCueChars
         self.maxLineChars = maxLineChars
         self.gapThreshold = gapThreshold
         self.minSentenceCueDuration = minSentenceCueDuration
+        self.sentenceGapThreshold = sentenceGapThreshold
+        self.sentenceSoftChars = sentenceSoftChars
+        self.maxSentenceChars = maxSentenceChars
+        self.maxSentenceDuration = maxSentenceDuration
     }
 
     /// A word with its start filled in, ready to be grouped into cues.
@@ -109,6 +136,41 @@ public struct CueBuilder: Sendable {
         }
         flush()
         return cues
+    }
+
+    /// Returns one segment per sentence, for `--cues sentences` and timestamped text.
+    ///
+    /// A new sentence starts when any of these holds:
+    ///
+    /// - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
+    ///   abbreviation such as `Mr.`
+    /// - the gap to the previous word is longer than ``sentenceGapThreshold``,
+    ///   which catches a speaker trailing off without punctuation
+    /// - the speaker changes
+    /// - the sentence is past ``sentenceSoftChars`` and the previous word ends a
+    ///   clause with `,`, `;`, `:`, or a dash
+    /// - adding the word would push the sentence past ``maxSentenceChars`` or
+    ///   ``maxSentenceDuration``
+    ///
+    /// The `--max-cue-*` limits do not apply, because a sentence is cut where the
+    /// speaker paused rather than where a subtitle line fills up.
+    ///
+    /// - Parameter words: The provider's words, in any order.
+    /// - Returns: Sentences in start order, empty when there are no words.
+    public func sentences(from words: [TranscriptDocument.Word]) -> [TranscriptDocument.Segment] {
+        var sentences: [TranscriptDocument.Segment] = []
+        var current: [TimedWord] = []
+
+        for word in Self.normalized(words) {
+            if let previous = current.last, let first = current.first,
+               shouldBreakSentence(before: word, after: previous, sentenceStart: first.start, sentenceText: Self.text(of: current)) {
+                if let sentence = Self.cue(from: current) { sentences.append(sentence) }
+                current = []
+            }
+            current.append(word)
+        }
+        if let sentence = Self.cue(from: current) { sentences.append(sentence) }
+        return sentences
     }
 
     /// Returns one cue per word, for `--cues words`.
@@ -176,6 +238,22 @@ public struct CueBuilder: Sendable {
         return false
     }
 
+    /// Returns whether `word` starts a new sentence.
+    private func shouldBreakSentence(
+        before word: TimedWord,
+        after previous: TimedWord,
+        sentenceStart: Double,
+        sentenceText: String
+    ) -> Bool {
+        if Self.endsSentence(previous.text), !Self.isAbbreviation(previous.text) { return true }
+        if word.start - previous.effectiveEnd > sentenceGapThreshold { return true }
+        if previous.speaker != word.speaker { return true }
+        if sentenceText.count >= sentenceSoftChars, Self.endsClause(previous.text) { return true }
+        if sentenceText.count + 1 + word.text.count > maxSentenceChars { return true }
+        if word.effectiveEnd - sentenceStart > maxSentenceDuration { return true }
+        return false
+    }
+
     /// Fills in missing starts and puts the words in start order.
     ///
     /// A word with no start inherits the previous word's end, so providers that
@@ -233,5 +311,16 @@ public struct CueBuilder: Sendable {
         let withoutCloser = text.dropLast()
         guard let previous = withoutCloser.last else { return false }
         return sentenceEndings.contains(previous)
+    }
+
+    /// Returns whether a word ends a clause with a comma, semicolon, colon, or dash.
+    private static func endsClause(_ text: String) -> Bool {
+        guard let last = text.last else { return false }
+        return clauseEndings.contains(last)
+    }
+
+    /// Returns whether a word is an abbreviation whose full stop ends no sentence.
+    private static func isAbbreviation(_ text: String) -> Bool {
+        abbreviations.contains(text.lowercased())
     }
 }

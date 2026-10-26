@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 — 2026-10-25
+
+Plain text is now one timestamped sentence per line, and VOZ transcripts are
+split into sentences instead of pause-sized fragments.
+
+- `txt` writes `6:45.8  He ate an early supper.`, one sentence per line, with
+  times padded into a column. Sentences come from the word timings, or from the
+  provider's segments when there are no words; a transcript with no timings is
+  still written as prose. With `--diarize` the speaker follows the time.
+  `--no-timestamps` restores the old prose output, and `bench` keeps writing
+  prose.
+- `--cues sentences` rebuilds the segments as one per sentence for every
+  format, so `json`, `srt`, and `vtt` agree. A sentence ends at `.`, `?`, `!`,
+  or `…` (not after `Mr.`, `Dr.`, and similar), at a pause longer than two
+  seconds, at a speaker change, at a comma once it passes 160 characters, and
+  in any case by 300 characters or 30 seconds. The `--max-cue-*` limits do not
+  apply.
+- `--cues` now defaults to `sentences` for VOZ and stays `segments` for every
+  other provider. VOZ returns words only, and the old cue builder split them at
+  0.8-second pauses, which cut sentences mid-clause.
+- `--cues sentences` asks Grok, Gemini, OpenAI, and ElevenLabs for word
+  timestamps, as subtitle formats do, and is a usage error on Aqua, Cohere, and
+  Meta, which return none.
+
 ## 0.9.0 — 2026-09-15
 
 `speechkit` with no arguments on a terminal now walks through a run with arrow

@@ -65,4 +65,23 @@ public enum TimecodeFormatter {
         }
         return "\(timecode(milliseconds: startMilliseconds, style: style)) --> \(timecode(milliseconds: endMilliseconds, style: style))"
     }
+
+    /// Returns a compact reading timestamp, such as `6:45.8` or `1:02:03.4`.
+    ///
+    /// Plain text uses this rather than a subtitle timecode. The time is
+    /// truncated to tenths rather than rounded, so a line never claims to start
+    /// after its first word.
+    ///
+    /// - Parameter seconds: The time, in seconds. Negative and non-finite values become zero.
+    public static func clock(_ seconds: Double) -> String {
+        let tenths = seconds.isFinite && seconds > 0 ? Int(seconds * 10 + 1e-6) : 0
+        let hours = tenths / 36_000
+        let minutes = (tenths % 36_000) / 600
+        let wholeSeconds = (tenths % 600) / 10
+        let fraction = tenths % 10
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d.%d", hours, minutes, wholeSeconds, fraction)
+        }
+        return String(format: "%d:%02d.%d", minutes, wholeSeconds, fraction)
+    }
 }

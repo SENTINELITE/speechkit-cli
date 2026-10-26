@@ -141,6 +141,9 @@ speechkit transcribe interview.m4a --provider openai --language en --format vtt 
 # Diarized SubRip for a directory of files, three uploads at a time
 speechkit transcribe *.wav --provider grok --format srt --diarize --output ./subs/ --jobs 3
 
+# On-device VOZ: one timestamped sentence per line, plus JSON with word timings
+speechkit transcribe talk.m4a --provider voz --format txt --format json --output ./out/
+
 # On-device transcription, JSON piped into jq
 speechkit transcribe talk.mp3 --provider apple --language en-US --format json | jq .segments
 
@@ -261,8 +264,9 @@ from a session started this way pipes as cleanly as any other.
 | `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, Apple, and VOZ. On OpenAI it selects `gpt-4o-transcribe-diarize`, which OpenAI retires on February 26, 2027; the run prints a note. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
 | `-o`, `--output` | directory or file path | stdout | A directory (existing, or ending with `/`) takes any number of inputs and formats and is created if missing. A file path takes one input and one format. |
+| `--no-timestamps` | flag | off | Write `txt` as prose instead of one timestamped sentence per line. |
 | `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
-| `--cues` | `segments`, `words` | `segments` | `words` writes one cue per word in SRT and VTT. |
+| `--cues` | `segments`, `sentences`, `words` | `sentences` for VOZ, `segments` otherwise | `sentences` rebuilds the segments, in every format, as one per sentence from the word timings. `words` writes one cue per word in SRT and VTT. |
 | `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
 | `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
 | `--no-download` | flag | off | Fail with exit 3 instead of downloading a missing on-device model. VOZ only. |
@@ -541,8 +545,9 @@ default model and where each credential was found.
 Aqua and Cohere return text only, so `--format srt` or `--format vtt` with
 either is a usage error rather than a wasted upload. Meta returns speaker
 turns but no word timings, so `--words` is rejected there too. VOZ returns
-words and builds its segments from them with the cue builder, so
-`--max-cue-duration` and `--max-cue-chars` shape its subtitles.
+words only, so its segments are built by the CLI: one per sentence by default,
+or with `--cues segments` by the cue builder, where `--max-cue-duration` and
+`--max-cue-chars` shape its subtitles.
 
 Use `speechkit languages <provider>` for the accepted `--language` values.
 Grok, Aqua, Cohere, and Meta print a fixed list; OpenAI and Gemini accept any
@@ -637,9 +642,25 @@ content). Audio never leaves the machine either way. Read
 
 ## Output formats
 
-**txt** — the transcript text and a trailing newline. With `--diarize`, one
-paragraph per speaker turn, prefixed `A: `, `B: `, and so on, separated by a
-blank line.
+**txt** — one sentence per line, each prefixed with its start time, and a
+trailing newline:
+
+```
+ 6:40.5  That night he was more tired than he ever had been.
+ 6:45.8  He ate an early supper.
+12:13.3  It was a good thing he had not been hungry the night before.
+```
+
+Times are `m:ss.s`, or `h:mm:ss.s` past an hour, truncated to the tenth so a
+line never claims to start after its first word, and padded so the text lines
+up. Sentences come from the word timings when the provider returned any (see
+[Sentences](#sentences)), and from the provider's segments otherwise. With
+`--diarize`, each line carries its speaker after the time, as `0:05.0  B: …`.
+A transcript with no timings at all, from Aqua or Cohere, is written as prose.
+
+`--no-timestamps` writes the transcript as prose instead: the text and a
+trailing newline, or with `--diarize` one paragraph per speaker turn, prefixed
+`A: `, `B: `, and so on, separated by a blank line. `bench` always writes prose.
 
 **json** — the `TranscriptDocument`: provider, model, source file, text,
 language, duration, segments, words, and warnings. Pretty-printed with sorted
@@ -659,9 +680,32 @@ timing tags — `How <00:00:01.900>is <00:00:02.100>the` — which players use t
 highlight words as they are spoken; the first word of a cue carries no tag
 because the cue start already covers it.
 
-Cues are built from segments by default. `--cues words` writes one cue per word
-instead, for word-highlighting players; it needs word timings, so pass `--words`
-with it. Lines are wrapped on word boundaries at the `--max-cue-chars` limit.
+Cues are built from segments by default, and from sentences for VOZ.
+`--cues words` writes one cue per word instead, for word-highlighting players;
+it needs word timings, so pass `--words` with it. Lines are wrapped on word
+boundaries at the `--max-cue-chars` limit.
+
+### Sentences
+
+`--cues sentences` replaces the segments with one per sentence, built from the
+word timings, so `json`, `srt`, and `vtt` all carry the same sentences. It is
+the default for VOZ, which returns words and no segments of its own. Plain text
+uses the same rules whatever `--cues` says. A new sentence starts when:
+
+- the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
+  abbreviation such as `Mr.` or `Dr.`
+- the speaker paused for more than 2 seconds, which catches trailing off
+  without punctuation
+- the speaker changes
+- the sentence is past 160 characters and the previous word ends in `,`, `;`,
+  `:`, or a dash
+- the sentence would pass 300 characters or 30 seconds
+
+The `--max-cue-*` limits do not apply to sentences, so a long sentence makes a
+long subtitle cue; use `--cues segments` for subtitles sized for the screen.
+With Grok, Gemini, OpenAI, or ElevenLabs, `--cues sentences` asks for word
+timestamps the way subtitle formats do. Aqua, Cohere, and Meta return no word
+timings, so it is a usage error there.
 
 Subtitles are never guessed. If a transcript carries no timings, `srt` and `vtt`
 fail for that file with a message naming the provider rather than inventing cue

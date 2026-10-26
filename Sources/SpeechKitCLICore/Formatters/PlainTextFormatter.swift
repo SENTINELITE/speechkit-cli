@@ -2,22 +2,51 @@ import Foundation
 
 /// Renders a transcript as plain text.
 ///
-/// With speaker labels on, the transcript is written as one paragraph per
-/// speaker turn, prefixed with the speaker label and a colon.
+/// With timestamps on and timings available, the transcript is written one
+/// sentence per line, each prefixed with its start time:
+///
+/// ```
+/// 6:40.5  That night he was more tired than he ever had been.
+/// 6:45.8  He ate an early supper.
+/// ```
+///
+/// Sentences come from the word timings when the provider returned any, and
+/// from the segments otherwise. A transcript with no timings at all falls back
+/// to prose. With speaker labels on, each line carries its label after the
+/// time; without timestamps, the transcript is one paragraph per speaker turn.
 public struct PlainTextFormatter: TranscriptFormatter {
     /// A Boolean value indicating whether speaker labels are written.
     public let includesSpeakerLabels: Bool
+    /// A Boolean value indicating whether lines are timestamped.
+    public let includesTimestamps: Bool
+    /// The builder that groups words into sentences.
+    public let cueBuilder: CueBuilder
 
     /// The `txt` file extension.
     public let fileExtension = "txt"
 
     /// Creates a plain text formatter.
-    public init(includesSpeakerLabels: Bool = false) {
+    ///
+    /// - Parameters:
+    ///   - includesSpeakerLabels: Whether speaker labels are written.
+    ///   - includesTimestamps: Whether to write one timestamped sentence per line.
+    ///   - cueBuilder: The builder that groups words into sentences.
+    public init(
+        includesSpeakerLabels: Bool = false,
+        includesTimestamps: Bool = false,
+        cueBuilder: CueBuilder = CueBuilder()
+    ) {
         self.includesSpeakerLabels = includesSpeakerLabels
+        self.includesTimestamps = includesTimestamps
+        self.cueBuilder = cueBuilder
     }
 
     /// Renders the document as plain text.
     public func render(_ document: TranscriptDocument) throws -> String {
+        if includesTimestamps, let lines = timestampedLines(document) {
+            return lines.joined(separator: "\n") + "\n"
+        }
+
         guard includesSpeakerLabels else {
             return document.text + "\n"
         }
@@ -29,6 +58,35 @@ public struct PlainTextFormatter: TranscriptFormatter {
 
         let paragraphs = turns.map { "\($0.label): \($0.text)" }
         return paragraphs.joined(separator: "\n\n") + "\n"
+    }
+
+    /// Returns one line per sentence, or `nil` when the document has no timings.
+    ///
+    /// Times are padded to the widest one, so the text lines up in a column.
+    private func timestampedLines(_ document: TranscriptDocument) -> [String]? {
+        let sentences: [TranscriptDocument.Segment]
+        if document.words.contains(where: { $0.start != nil }) {
+            sentences = cueBuilder.sentences(from: document.words)
+        } else if document.hasTimings {
+            sentences = document.segments
+        } else {
+            return nil
+        }
+        guard !sentences.isEmpty else { return nil }
+
+        let labels = includesSpeakerLabels
+            ? SpeakerLabels.labels(in: sentences)
+            : Array(repeating: nil, count: sentences.count)
+        let times = sentences.map { TimecodeFormatter.clock($0.start) }
+        let width = times.map(\.count).max() ?? 0
+
+        return zip(sentences, zip(times, labels)).map { sentence, timeAndLabel in
+            let (time, label) = timeAndLabel
+            let padded = String(repeating: " ", count: width - time.count) + time
+            let text = sentence.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let prefix = label.map { "\($0): " } ?? ""
+            return "\(padded)  \(prefix)\(text)"
+        }
     }
 }
 

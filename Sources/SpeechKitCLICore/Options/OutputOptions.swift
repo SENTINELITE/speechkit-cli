@@ -27,6 +27,8 @@ public enum OutputFormat: String, CaseIterable, Sendable, ExpressibleByArgument 
 public enum CueMode: String, CaseIterable, Sendable, ExpressibleByArgument {
     /// One cue per segment.
     case segments
+    /// One cue per sentence, built from word timings.
+    case sentences
     /// One cue per word.
     case words
 
@@ -49,6 +51,10 @@ public struct OutputOptions: ParsableArguments, Sendable {
         help: "Write to this directory, or to this file when there is one input and one format. Without it, output goes to stdout."
     )
     public var output: String?
+
+    /// Writes plain text as prose instead of one timestamped sentence per line.
+    @Flag(name: .customLong("no-timestamps"), help: "Write txt as prose instead of one timestamped sentence per line.")
+    public var noTimestamps: Bool = false
 
     /// Replaces existing output files instead of skipping them.
     @Flag(name: .long, help: "Replace existing output files.")

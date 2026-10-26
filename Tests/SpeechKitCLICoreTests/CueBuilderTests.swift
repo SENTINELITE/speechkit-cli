@@ -211,4 +211,100 @@ struct CueBuilderTests {
         #expect(cues.count == 2)
         #expect(cues.map(\.text) == ["one", "two"])
     }
+
+    // MARK: Sentences
+
+    @Test("Sentence punctuation always ends a sentence, however short")
+    func sentencePunctuation() {
+        let sentences = CueBuilder().sentences(from: [
+            word("Really.", 0, 0.4),
+            word("Truly?", 0.5, 0.9),
+            word("Yes!", 1.0, 1.2),
+            word("Well\u{2026}", 1.3, 1.6),
+            word("\"Done.\"", 1.7, 2.0),
+            word("Next", 2.1, 2.4),
+        ])
+        #expect(sentences.map(\.text) == ["Really.", "Truly?", "Yes!", "Well\u{2026}", "\"Done.\"", "Next"])
+        #expect(sentences.map(\.start) == [0, 0.5, 1.0, 1.3, 1.7, 2.1])
+        #expect(sentences.last?.end == 2.4)
+    }
+
+    @Test("Abbreviations do not end a sentence")
+    func sentenceAbbreviations() {
+        let sentences = CueBuilder().sentences(from: [
+            word("Ask", 0, 0.2),
+            word("Dr.", 0.3, 0.5),
+            word("Smith.", 0.6, 0.9),
+        ])
+        #expect(sentences.map(\.text) == ["Ask Dr. Smith."])
+    }
+
+    @Test("A long pause ends a sentence; a short one does not")
+    func sentencePause() {
+        let sentences = CueBuilder().sentences(from: [
+            word("I'm", 0, 0.2),
+            word("not", 1.5, 1.7),
+            word("sure,", 1.8, 2.0),
+            word("but", 2.1, 2.3),
+            word("this", 4.4, 4.6),
+            word("works.", 4.7, 5.0),
+        ])
+        #expect(sentences.map(\.text) == ["I'm not sure, but", "this works."])
+    }
+
+    @Test("A speaker change ends a sentence")
+    func sentenceSpeaker() {
+        let sentences = CueBuilder().sentences(from: [
+            word("Hi", 0, 0.2, speaker: "0"),
+            word("there", 0.3, 0.5, speaker: "1"),
+        ])
+        #expect(sentences.map(\.text) == ["Hi", "there"])
+        #expect(sentences.map(\.speaker) == ["0", "1"])
+    }
+
+    @Test("A run-on breaks at a comma once it passes the soft limit")
+    func sentenceSoftLimit() {
+        let builder = CueBuilder(sentenceSoftChars: 10)
+        let sentences = builder.sentences(from: [
+            word("one", 0, 0.1),
+            word("two,", 0.2, 0.3),
+            word("three", 0.4, 0.5),
+            word("four,", 0.6, 0.7),
+            word("five", 0.8, 0.9),
+        ])
+        #expect(sentences.map(\.text) == ["one two, three four,", "five"])
+    }
+
+    @Test("A sentence is cut at the hard character and duration limits")
+    func sentenceHardLimits() {
+        let byChars = CueBuilder(maxSentenceChars: 9).sentences(from: [
+            word("aaaa", 0, 0.1),
+            word("bbbb", 0.2, 0.3),
+            word("cccc", 0.4, 0.5),
+        ])
+        #expect(byChars.map(\.text) == ["aaaa bbbb", "cccc"])
+
+        let byTime = CueBuilder(maxSentenceDuration: 1).sentences(from: [
+            word("a", 0, 0.5),
+            word("b", 0.6, 0.9),
+            word("c", 1.0, 1.5),
+        ])
+        #expect(byTime.map(\.text) == ["a b", "c"])
+    }
+
+    @Test("The --max-cue-* limits do not cut sentences")
+    func sentenceIgnoresCueLimits() {
+        let builder = CueBuilder(maxCueDuration: 0.5, maxCueChars: 5)
+        let sentences = builder.sentences(from: [
+            word("A", 0, 0.4),
+            word("longer", 0.5, 0.9),
+            word("sentence.", 1.0, 1.4),
+        ])
+        #expect(sentences.map(\.text) == ["A longer sentence."])
+    }
+
+    @Test("No words means no sentences")
+    func sentencesEmpty() {
+        #expect(CueBuilder().sentences(from: []).isEmpty)
+    }
 }
