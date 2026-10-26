@@ -252,6 +252,27 @@ struct CueBuilderTests {
         #expect(sentences.map(\.text) == ["I'm not sure, but", "this works."])
     }
 
+    @Test("A pause after one or two words joins them to the next sentence")
+    func sentencePauseNeedsWords() {
+        let sentences = CueBuilder().sentences(from: [
+            word("How", 14.3, 14.6),
+            word("I'm", 19.1, 19.3),
+            word("so", 19.4, 19.6),
+            word("tired.", 19.7, 20.0),
+        ])
+        #expect(sentences.map(\.text) == ["How I'm so tired."])
+        #expect(sentences.first?.start == 14.3)
+    }
+
+    @Test("A very long silence splits even a one-word sentence")
+    func sentenceLongPause() {
+        let sentences = CueBuilder().sentences(from: [
+            word("So", 0, 0.3),
+            word("anyway.", 12, 12.5),
+        ])
+        #expect(sentences.map(\.text) == ["So", "anyway."])
+    }
+
     @Test("A speaker change ends a sentence")
     func sentenceSpeaker() {
         let sentences = CueBuilder().sentences(from: [

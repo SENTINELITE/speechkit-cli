@@ -123,7 +123,23 @@ struct FormatterTests {
             ]
         )
         let rendered = try PlainTextFormatter(includesTimestamps: true).render(sample)
-        #expect(rendered == " 0:05.0  One.\n10:15.0  Two.\n")
+        #expect(rendered == " 0:05.0  One.\n\n10:15.0  Two.\n")
+    }
+
+    @Test("A long silence between sentences starts a paragraph")
+    func plainTextParagraphs() throws {
+        let sample = TranscriptDocument(
+            provider: "voz",
+            sourceFile: "/tmp/talk.wav",
+            text: "One. Two. Three.",
+            words: [
+                TranscriptDocument.Word(text: "One.", start: 0, end: 0.5),
+                TranscriptDocument.Word(text: "Two.", start: 3, end: 3.5),
+                TranscriptDocument.Word(text: "Three.", start: 20, end: 20.5),
+            ]
+        )
+        let rendered = try PlainTextFormatter(includesTimestamps: true).render(sample)
+        #expect(rendered == "0:00.0  One.\n0:03.0  Two.\n\n0:20.0  Three.\n")
     }
 
     @Test("The registry passes timestamps through to plain text")

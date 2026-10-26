@@ -158,6 +158,14 @@ final class VozProgressReporter {
     private let reportsDownload: Bool
     private let task: ProgressTask?
     private var lastPrintedStep = -1
+    private var slowLoadHint: Task<Void, Never>?
+
+    /// How long loading runs before the reporter explains why it is slow.
+    ///
+    /// A prepared model loads in well under a second, so the note about the
+    /// Neural Engine only appears when a load is actually specialising.
+    static let slowLoadDelay: Duration = .seconds(5)
+    static let slowLoadNote = "first load specialises for the Neural Engine and can take a few minutes"
 
     /// Creates a reporter for a console.
     ///
@@ -195,11 +203,12 @@ final class VozProgressReporter {
             let percent = Int((min(max(progress, 0), 1) * 100).rounded())
             write("downloading \(percent)%", step: percent / 10)
         case .loading:
-            write(
-                "loading model (first load specialises for the Neural Engine and can take a few minutes)",
-                step: 101
-            )
+            write("loading model", step: 101)
+            scheduleSlowLoadHint { reporter in
+                reporter.write("still loading (\(Self.slowLoadNote))", step: 103)
+            }
         case .ready:
+            slowLoadHint?.cancel()
             write("ready", step: 102)
         case .failed:
             // The thrown error carries the message, so it is not printed twice.
@@ -213,7 +222,18 @@ final class VozProgressReporter {
     /// the lines that matter are the per-file ones that follow it. The plain
     /// path has already written whole lines and needs no closing.
     func finish() async {
+        slowLoadHint?.cancel()
         await task?.finish()
+    }
+
+    /// Runs `hint` once loading has lasted ``slowLoadDelay``, unless it ends first.
+    private func scheduleSlowLoadHint(_ hint: @escaping @MainActor (VozProgressReporter) async -> Void) {
+        slowLoadHint?.cancel()
+        slowLoadHint = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.slowLoadDelay)
+            guard !Task.isCancelled, let self else { return }
+            await hint(self)
+        }
     }
 
     private func report(_ state: VozModelState, on task: ProgressTask) async {
@@ -231,10 +251,12 @@ final class VozProgressReporter {
             await task.update(fraction: fraction)
         case .loading:
             await task.update(fraction: nil)
-            await task.update(
-                label: "voz: loading model (first load specialises for the Neural Engine)"
-            )
+            await task.update(label: "voz: loading model")
+            scheduleSlowLoadHint { _ in
+                await task.update(label: "voz: loading model (\(Self.slowLoadNote))")
+            }
         case .ready:
+            slowLoadHint?.cancel()
             await task.update(label: "voz: ready")
         case .failed:
             return

@@ -28,6 +28,10 @@ public struct CueBuilder: Sendable {
     public var minSentenceCueDuration: Double = 1.5
     /// The silence between words, in seconds, that ends a sentence even without punctuation.
     public var sentenceGapThreshold: Double = 2
+    /// How many words a sentence needs before a pause alone may end it.
+    public var minWordsBeforePause: Int = 3
+    /// The silence, in seconds, that ends a sentence however few words it has.
+    public var longPauseThreshold: Double = 10
     /// The length, in characters, past which a sentence breaks at the next comma.
     public var sentenceSoftChars: Int = 160
     /// The most characters a sentence may carry before it is cut mid-clause.
@@ -56,6 +60,8 @@ public struct CueBuilder: Sendable {
     ///   - gapThreshold: The silence between words that forces a new cue.
     ///   - minSentenceCueDuration: How long a cue must run before punctuation splits it.
     ///   - sentenceGapThreshold: The silence that ends a sentence without punctuation.
+    ///   - minWordsBeforePause: How many words a sentence needs before a pause may end it.
+    ///   - longPauseThreshold: The silence that ends a sentence however short.
     ///   - sentenceSoftChars: The length past which a sentence breaks at a comma.
     ///   - maxSentenceChars: The most characters a sentence may carry.
     ///   - maxSentenceDuration: The longest a sentence may run, in seconds.
@@ -66,6 +72,8 @@ public struct CueBuilder: Sendable {
         gapThreshold: Double = 0.8,
         minSentenceCueDuration: Double = 1.5,
         sentenceGapThreshold: Double = 2,
+        minWordsBeforePause: Int = 3,
+        longPauseThreshold: Double = 10,
         sentenceSoftChars: Int = 160,
         maxSentenceChars: Int = 300,
         maxSentenceDuration: Double = 30
@@ -76,6 +84,8 @@ public struct CueBuilder: Sendable {
         self.gapThreshold = gapThreshold
         self.minSentenceCueDuration = minSentenceCueDuration
         self.sentenceGapThreshold = sentenceGapThreshold
+        self.minWordsBeforePause = minWordsBeforePause
+        self.longPauseThreshold = longPauseThreshold
         self.sentenceSoftChars = sentenceSoftChars
         self.maxSentenceChars = maxSentenceChars
         self.maxSentenceDuration = maxSentenceDuration
@@ -144,8 +154,11 @@ public struct CueBuilder: Sendable {
     ///
     /// - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
     ///   abbreviation such as `Mr.`
-    /// - the gap to the previous word is longer than ``sentenceGapThreshold``,
-    ///   which catches a speaker trailing off without punctuation
+    /// - the gap to the previous word is longer than ``sentenceGapThreshold``
+    ///   and the sentence already has ``minWordsBeforePause`` words, which
+    ///   catches a speaker trailing off without punctuation while keeping a
+    ///   lone "So" or "Um" attached to what follows it
+    /// - the gap is longer than ``longPauseThreshold``, however short the sentence
     /// - the speaker changes
     /// - the sentence is past ``sentenceSoftChars`` and the previous word ends a
     ///   clause with `,`, `;`, `:`, or a dash
@@ -163,7 +176,13 @@ public struct CueBuilder: Sendable {
 
         for word in Self.normalized(words) {
             if let previous = current.last, let first = current.first,
-               shouldBreakSentence(before: word, after: previous, sentenceStart: first.start, sentenceText: Self.text(of: current)) {
+               shouldBreakSentence(
+                   before: word,
+                   after: previous,
+                   sentenceStart: first.start,
+                   sentenceText: Self.text(of: current),
+                   wordCount: current.count
+               ) {
                 if let sentence = Self.cue(from: current) { sentences.append(sentence) }
                 current = []
             }
@@ -243,10 +262,13 @@ public struct CueBuilder: Sendable {
         before word: TimedWord,
         after previous: TimedWord,
         sentenceStart: Double,
-        sentenceText: String
+        sentenceText: String,
+        wordCount: Int
     ) -> Bool {
         if Self.endsSentence(previous.text), !Self.isAbbreviation(previous.text) { return true }
-        if word.start - previous.effectiveEnd > sentenceGapThreshold { return true }
+        let gap = word.start - previous.effectiveEnd
+        if gap > longPauseThreshold { return true }
+        if gap > sentenceGapThreshold, wordCount >= minWordsBeforePause { return true }
         if previous.speaker != word.speaker { return true }
         if sentenceText.count >= sentenceSoftChars, Self.endsClause(previous.text) { return true }
         if sentenceText.count + 1 + word.text.count > maxSentenceChars { return true }

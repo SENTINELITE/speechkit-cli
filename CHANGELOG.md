@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.1 — 2026-10-25
+
+Smoother sentence text.
+
+- A pause no longer splits off a sentence of one or two words. "How", a
+  five-second pause, and "I'm just so tired." is now one line timed from
+  "How". A pause longer than 10 seconds still splits, however short the line.
+  On a 35-minute test recording this cut the one- and two-word lines without
+  punctuation from 17 to 3.
+- Timestamped `txt` leaves a blank line where the recording falls silent for
+  more than 10 seconds, so it reads in paragraphs.
+- VOZ now prints `loading model`, and adds the note about the Neural Engine
+  only when loading has run for five seconds. A prepared model loads in under
+  a second, so the note no longer appears on every run.
+
 ## 0.10.0 — 2026-10-25
 
 Plain text is now one timestamped sentence per line, and VOZ transcripts are

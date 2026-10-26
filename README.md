@@ -653,7 +653,8 @@ trailing newline:
 
 Times are `m:ss.s`, or `h:mm:ss.s` past an hour, truncated to the tenth so a
 line never claims to start after its first word, and padded so the text lines
-up. Sentences come from the word timings when the provider returned any (see
+up. A silence of more than 10 seconds between two sentences leaves a blank
+line, so a long recording reads in sections. Sentences come from the word timings when the provider returned any (see
 [Sentences](#sentences)), and from the provider's segments otherwise. With
 `--diarize`, each line carries its speaker after the time, as `0:05.0  B: …`.
 A transcript with no timings at all, from Aqua or Cohere, is written as prose.
@@ -694,8 +695,10 @@ uses the same rules whatever `--cues` says. A new sentence starts when:
 
 - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
   abbreviation such as `Mr.` or `Dr.`
-- the speaker paused for more than 2 seconds, which catches trailing off
-  without punctuation
+- the speaker paused for more than 2 seconds after at least three words, which
+  catches trailing off without punctuation while keeping a lone "So" or "Um"
+  attached to what follows
+- the speaker paused for more than 10 seconds, however short the sentence
 - the speaker changes
 - the sentence is past 160 characters and the previous word ends in `,`, `;`,
   `:`, or a dash

@@ -10,8 +10,10 @@ import Foundation
 /// 6:45.8  He ate an early supper.
 /// ```
 ///
-/// Sentences come from the word timings when the provider returned any, and
-/// from the segments otherwise. A transcript with no timings at all falls back
+/// A silence longer than ``paragraphGap`` between two sentences leaves a blank
+/// line, so a recording with long pauses reads in sections. Sentences come
+/// from the word timings when the provider returned any, and from the
+/// segments otherwise. A transcript with no timings at all falls back
 /// to prose. With speaker labels on, each line carries its label after the
 /// time; without timestamps, the transcript is one paragraph per speaker turn.
 public struct PlainTextFormatter: TranscriptFormatter {
@@ -21,6 +23,8 @@ public struct PlainTextFormatter: TranscriptFormatter {
     public let includesTimestamps: Bool
     /// The builder that groups words into sentences.
     public let cueBuilder: CueBuilder
+    /// The silence, in seconds, between two sentences that starts a new paragraph.
+    public let paragraphGap: Double
 
     /// The `txt` file extension.
     public let fileExtension = "txt"
@@ -31,14 +35,17 @@ public struct PlainTextFormatter: TranscriptFormatter {
     ///   - includesSpeakerLabels: Whether speaker labels are written.
     ///   - includesTimestamps: Whether to write one timestamped sentence per line.
     ///   - cueBuilder: The builder that groups words into sentences.
+    ///   - paragraphGap: The silence between sentences that starts a new paragraph.
     public init(
         includesSpeakerLabels: Bool = false,
         includesTimestamps: Bool = false,
-        cueBuilder: CueBuilder = CueBuilder()
+        cueBuilder: CueBuilder = CueBuilder(),
+        paragraphGap: Double = 10
     ) {
         self.includesSpeakerLabels = includesSpeakerLabels
         self.includesTimestamps = includesTimestamps
         self.cueBuilder = cueBuilder
+        self.paragraphGap = paragraphGap
     }
 
     /// Renders the document as plain text.
@@ -80,13 +87,19 @@ public struct PlainTextFormatter: TranscriptFormatter {
         let times = sentences.map { TimecodeFormatter.clock($0.start) }
         let width = times.map(\.count).max() ?? 0
 
-        return zip(sentences, zip(times, labels)).map { sentence, timeAndLabel in
-            let (time, label) = timeAndLabel
+        var lines: [String] = []
+        var previousEnd: Double?
+        for (sentence, (time, label)) in zip(sentences, zip(times, labels)) {
+            if let previousEnd, sentence.start - previousEnd > paragraphGap {
+                lines.append("")
+            }
+            previousEnd = sentence.end
             let padded = String(repeating: " ", count: width - time.count) + time
             let text = sentence.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let prefix = label.map { "\($0): " } ?? ""
-            return "\(padded)  \(prefix)\(text)"
+            lines.append("\(padded)  \(prefix)\(text)")
         }
+        return lines
     }
 }
 
