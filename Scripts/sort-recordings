@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Sort a folder of recordings into one folder per session, then transcribe.
+
+Recordings captured together (Audio Hijack writing several tracks at once)
+share their creation and modification times to the second, so files with the
+same pair become one session. Every session gets its own folder, named date
+first so Finder sorts them chronologically:
+
+    20251118 2014 Recording/   Disc-…, Game-…, MicRaw_… captured together
+    20251104 1059 Mercury-Call/
+    20251114 1228 #13 USB002 week 6 (toronto, friday 14th november)/
+
+Only files directly inside the folder are considered; subfolders are never
+read. Without --apply nothing is moved. --transcribe runs `speechkit
+transcribe` on each session folder, writing .txt and .json beside the audio
+and skipping transcripts that already exist, so a re-run is cheap.
+"""
+
+import argparse
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".aac", ".aif", ".aiff", ".flac", ".caf", ".ogg", ".opus"}
+STAMP = re.compile(r"(\d{8}) ?(\d{4})")
+# A file written this recently may still be recording.
+STILL_RECORDING_SECONDS = 120
+# A folder this script created: "YYYYMMDD HHMM <label>".
+SESSION_FOLDER = re.compile(r"^\d{8} \d{4} .+")
+
+
+def duration(path: Path) -> float | None:
+    """Returns the audio duration in seconds from Spotlight, then afinfo."""
+    try:
+        out = subprocess.run(
+            ["mdls", "-raw", "-name", "kMDItemDurationSeconds", str(path)],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        return float(out)
+    except ValueError:
+        pass
+    out = subprocess.run(["afinfo", str(path)], capture_output=True, text=True, check=False).stdout
+    match = re.search(r"estimated duration: ([\d.]+)", out)
+    return float(match.group(1)) if match else None
+
+
+def label(stem: str) -> str:
+    """Returns what a file's name says besides its date stamp, e.g. `Mercury-Call`."""
+    match = STAMP.search(stem)
+    if not match:
+        return stem
+    prefix = stem[: match.start()].strip(" -_")
+    return prefix or "Recording"
+
+
+def folder_name(files: list[Path], born: float) -> str:
+    """Returns `YYYYMMDD HHMM <label>` for a session."""
+    stamps = {f"{m.group(1)} {m.group(2)}" for f in files if (m := STAMP.search(f.stem))}
+    stamp = stamps.pop() if len(stamps) == 1 else datetime.fromtimestamp(born).strftime("%Y%m%d %H%M")
+    labels = {label(f.stem) for f in files}
+    text = labels.pop() if len(labels) == 1 else "Recording"
+    return f"{stamp} {text}".replace("/", "-")
+
+
+def sessions(root: Path, min_seconds: float) -> tuple[list[tuple[str, list[Path]]], list[tuple[Path, str]]]:
+    """Groups the top-level audio files into sessions and returns the files left alone."""
+    groups: dict[tuple[int, int], list[Path]] = {}
+    skipped: list[tuple[Path, str]] = []
+    now = time.time()
+    for entry in sorted(root.iterdir()):
+        if not entry.is_file() or entry.suffix.lower() not in AUDIO_EXTENSIONS:
+            continue
+        if now - entry.stat().st_mtime < STILL_RECORDING_SECONDS:
+            skipped.append((entry, "modified in the last two minutes, may still be recording"))
+            continue
+        # Sound effects: no date in the name and too short to hold speech.
+        if not STAMP.search(entry.stem):
+            seconds = duration(entry)
+            if seconds is not None and seconds < min_seconds:
+                skipped.append((entry, "short sound with no date"))
+                continue
+        st = entry.stat()
+        groups.setdefault((int(st.st_birthtime), int(st.st_mtime)), []).append(entry)
+
+    named = [(folder_name(files, key[0]), files) for key, files in sorted(groups.items())]
+    return named, skipped
+
+
+def transcribable(files: list[Path]) -> list[Path]:
+    """Drops a `-dirty` track when its `-clean` twin is in the same session."""
+    names = {f.name for f in files}
+    keep = []
+    for f in files:
+        if f.stem.endswith("-dirty") and f.name.replace("-dirty", "-clean") in names:
+            continue
+        keep.append(f)
+    return keep
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("folder", nargs="?", default=".", help="The folder to sort. Defaults to the current one.")
+    parser.add_argument("--apply", action="store_true", help="Move the files. Without it, only print the plan.")
+    parser.add_argument("--transcribe", action="store_true", help="Transcribe every session folder with speechkit.")
+    parser.add_argument("-p", "--provider", default="voz", help="speechkit provider. Default: voz.")
+    parser.add_argument("--min-seconds", type=float, default=15,
+                        help="Leave undated files shorter than this alone. Default: 15.")
+    args = parser.parse_args()
+
+    root = Path(args.folder).expanduser().resolve()
+    if not root.is_dir():
+        print(f"sort-recordings: {root} is not a folder", file=sys.stderr)
+        return 1
+
+    named, skipped = sessions(root, args.min_seconds)
+    moves = 0
+    for name, files in named:
+        target = root / name
+        together = f"  ({len(files)} recorded together)" if len(files) > 1 else ""
+        print(f"{name}/{together}")
+        for f in files:
+            destination = target / f.name
+            if destination.exists():
+                print(f"    {f.name}  !! already in {name}/, left in place")
+                continue
+            print(f"    {f.name}")
+            moves += 1
+            if args.apply:
+                target.mkdir(exist_ok=True)
+                shutil.move(str(f), str(destination))
+    for f, reason in skipped:
+        print(f"left alone ({reason}): {f.name}")
+
+    verb = "Moved" if args.apply else "Would move"
+    print(f"\n{verb} {moves} files into {len(named)} folders.", end="")
+    print("" if args.apply else " Run again with --apply to do it.")
+
+    if not args.transcribe:
+        return 0
+    if not args.apply and moves:
+        print("--transcribe works on the sorted folders; pass --apply as well.", file=sys.stderr)
+        return 1
+
+    speechkit = shutil.which("speechkit")
+    if not speechkit:
+        print("sort-recordings: speechkit is not on PATH", file=sys.stderr)
+        return 1
+
+    failures = 0
+    folders = sorted(p for p in root.iterdir() if p.is_dir() and SESSION_FOLDER.match(p.name))
+    for folder in folders:
+        audio = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
+        audio = transcribable(audio)
+        # speechkit would transcribe and then refuse to overwrite, so files
+        # already done are dropped here rather than costing a model run.
+        audio = [a for a in audio if not all(a.with_suffix(e).exists() for e in (".txt", ".json"))]
+        if not audio:
+            continue
+        print(f"\n== {folder.name}", flush=True)
+        result = subprocess.run([
+            speechkit, "transcribe", *map(str, audio),
+            "-p", args.provider, "-f", "txt", "-f", "json", "-o", f"{folder}/",
+        ])
+        failures += result.returncode != 0
+    if failures:
+        print(f"\n{failures} folders had a transcription problem; see above.", file=sys.stderr)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
