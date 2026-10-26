@@ -2,8 +2,10 @@
 """Sort a folder of recordings into one folder per session, then transcribe.
 
 Recordings captured together (Audio Hijack writing several tracks at once)
-share their creation and modification times to the second, so files with the
-same pair become one session. Every session gets its own folder, named date
+share the start stamp and take number in their names, such as
+`Disc-20251118 2014 Recording 2`, so files with the same pair become one
+session. Files with no stamp fall back to matching creation and
+modification times to the second. Every session gets its own folder, named date
 first so Finder sorts them chronologically:
 
     20251118 2014 Recording/   Disc-…, Game-…, MicRaw_… captured together
@@ -27,10 +29,21 @@ from pathlib import Path
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".aac", ".aif", ".aiff", ".flac", ".caf", ".ogg", ".opus"}
 STAMP = re.compile(r"(\d{8}) ?(\d{4})")
+TAKE = re.compile(r"Recording (\d+)\b")
 # A file written this recently may still be recording.
 STILL_RECORDING_SECONDS = 120
 # A folder this script created: "YYYYMMDD HHMM <label>".
 SESSION_FOLDER = re.compile(r"^\d{8} \d{4} .+")
+
+
+def is_audio(path: Path) -> bool:
+    """Returns whether a path is a visible audio file.
+
+    Hidden files are skipped, which matters on exFAT and other non-Apple
+    drives: macOS keeps each file's metadata in a `._<name>` companion that
+    shares the extension, and moves it along with the real file.
+    """
+    return path.is_file() and not path.name.startswith(".") and path.suffix.lower() in AUDIO_EXTENSIONS
 
 
 def duration(path: Path) -> float | None:
@@ -63,16 +76,61 @@ def folder_name(files: list[Path], born: float) -> str:
     stamp = stamps.pop() if len(stamps) == 1 else datetime.fromtimestamp(born).strftime("%Y%m%d %H%M")
     labels = {label(f.stem) for f in files}
     text = labels.pop() if len(labels) == 1 else "Recording"
+    # Audio Hijack names a second take in the same minute "Recording 2", so the
+    # take number is what tells two sessions with one stamp apart.
+    takes = {m.group(1) if (m := TAKE.search(f.stem)) else None for f in files}
+    take = takes.pop() if len(takes) == 1 else None
+    if take:
+        text += f" {take}"
     return f"{stamp} {text}".replace("/", "-")
+
+
+def session_key(path: Path) -> tuple:
+    """Returns what one session's files have in common.
+
+    Audio Hijack names every track of a session with the same start stamp and,
+    for a second take in that minute, the same take number, so the name is the
+    key when it carries a stamp. File times are only the fallback: on copied
+    or exFAT files they drift, and one track can start seconds after another.
+    """
+    if match := STAMP.search(path.stem):
+        take = m.group(1) if (m := TAKE.search(path.stem)) else None
+        return ("name", f"{match.group(1)} {match.group(2)}", take)
+    st = path.stat()
+    return ("time", int(st.st_birthtime), int(st.st_mtime))
+
+
+def born(files: list[Path]) -> float:
+    """Returns the earliest creation time in a session."""
+    return min(f.stat().st_birthtime for f in files)
+
+
+def unique_name(root: Path, name: str, key: tuple, taken: set[str]) -> str:
+    """Returns `name`, or `name (2)` and so on when another session already has it.
+
+    A folder already on disk is only reused when the audio in it belongs to the
+    same session, so a re-run adds to its own folders but never merges two
+    sessions that happen to share a name.
+    """
+    candidate, n = name, 1
+    while True:
+        folder = root / candidate
+        existing = [p for p in folder.iterdir() if is_audio(p)] if folder.is_dir() else []
+        on_disk_ok = all(session_key(p) == key for p in existing)
+        if candidate not in taken and on_disk_ok:
+            taken.add(candidate)
+            return candidate
+        n += 1
+        candidate = f"{name} ({n})"
 
 
 def sessions(root: Path, min_seconds: float) -> tuple[list[tuple[str, list[Path]]], list[tuple[Path, str]]]:
     """Groups the top-level audio files into sessions and returns the files left alone."""
-    groups: dict[tuple[int, int], list[Path]] = {}
+    groups: dict[tuple, list[Path]] = {}
     skipped: list[tuple[Path, str]] = []
     now = time.time()
     for entry in sorted(root.iterdir()):
-        if not entry.is_file() or entry.suffix.lower() not in AUDIO_EXTENSIONS:
+        if not is_audio(entry):
             continue
         if now - entry.stat().st_mtime < STILL_RECORDING_SECONDS:
             skipped.append((entry, "modified in the last two minutes, may still be recording"))
@@ -83,10 +141,14 @@ def sessions(root: Path, min_seconds: float) -> tuple[list[tuple[str, list[Path]
             if seconds is not None and seconds < min_seconds:
                 skipped.append((entry, "short sound with no date"))
                 continue
-        st = entry.stat()
-        groups.setdefault((int(st.st_birthtime), int(st.st_mtime)), []).append(entry)
+        groups.setdefault(session_key(entry), []).append(entry)
 
-    named = [(folder_name(files, key[0]), files) for key, files in sorted(groups.items())]
+    taken: set[str] = set()
+    ordered = sorted(groups.items(), key=lambda item: born(item[1]))
+    named = [
+        (unique_name(root, folder_name(files, born(files)), key, taken), files)
+        for key, files in ordered
+    ]
     return named, skipped
 
 
@@ -131,7 +193,11 @@ def main() -> int:
             moves += 1
             if args.apply:
                 target.mkdir(exist_ok=True)
-                shutil.move(str(f), str(destination))
+                try:
+                    shutil.move(str(f), str(destination))
+                except FileNotFoundError:
+                    print(f"    {f.name}  !! vanished before it could be moved, skipped")
+                    moves -= 1
     for f, reason in skipped:
         print(f"left alone ({reason}): {f.name}")
 
@@ -153,7 +219,7 @@ def main() -> int:
     failures = 0
     folders = sorted(p for p in root.iterdir() if p.is_dir() and SESSION_FOLDER.match(p.name))
     for folder in folders:
-        audio = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
+        audio = sorted(p for p in folder.iterdir() if is_audio(p))
         audio = transcribable(audio)
         # speechkit would transcribe and then refuse to overwrite, so files
         # already done are dropped here rather than costing a model run.
