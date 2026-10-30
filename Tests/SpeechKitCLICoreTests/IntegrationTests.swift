@@ -28,9 +28,7 @@ struct IntegrationTests {
 
     /// Returns `true` when the provider's API key is in the environment.
     static func hasKey(_ provider: CLIProvider) -> Bool {
-        let name = CredentialResolver.environmentVariableName(for: provider)
-        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
-        return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        CredentialResolver.environmentKey(for: provider, in: ProcessInfo.processInfo.environment) != nil
     }
 
     /// Returns `true` when `SPEECHKIT_VOZ_INTEGRATION` asks for the VOZ test.
@@ -133,6 +131,11 @@ struct IntegrationTests {
     @Test("Meta transcribes a spoken sample", .enabled(if: IntegrationTests.hasKey(.meta)))
     func meta() async throws {
         Self.expectTranscript(try await Self.transcribe(.meta, languages: ["en"]), provider: .meta)
+    }
+
+    @Test("Fish Audio transcribes a spoken sample", .enabled(if: IntegrationTests.hasKey(.fishAudio)))
+    func fishAudio() async throws {
+        Self.expectTranscript(try await Self.transcribe(.fishAudio, languages: ["en"]), provider: .fishAudio)
     }
 
     @Test("ElevenLabs transcribes a spoken sample", .enabled(if: IntegrationTests.hasKey(.elevenlabs)))

@@ -23,8 +23,9 @@ public struct NoKeychainCredentialSource: KeychainCredentialSource {
 
 /// Resolves the credential for a provider.
 ///
-/// The order is `--api-key`, then `SPEECHKIT_<PROVIDER>_API_KEY`, then the
-/// Keychain.
+/// The order is `--api-key`, then `SPEECHKIT_<PROVIDER>_API_KEY` (and any
+/// vendor variable the provider also answers to, such as `FISH_API_KEY`), then
+/// the Keychain.
 public struct CredentialResolver: Sendable {
     private let environment: [String: String]
     private let keychain: any KeychainCredentialSource
@@ -43,8 +44,42 @@ public struct CredentialResolver: Sendable {
     }
 
     /// The environment variable that holds a provider's API key.
+    ///
+    /// A hyphen in the raw value becomes an underscore, because shells reject
+    /// hyphens in variable names: `fish-audio` reads `SPEECHKIT_FISH_AUDIO_API_KEY`.
     public static func environmentVariableName(for provider: CLIProvider) -> String {
-        "SPEECHKIT_\(provider.rawValue.uppercased())_API_KEY"
+        let name = provider.rawValue.uppercased().replacingOccurrences(of: "-", with: "_")
+        return "SPEECHKIT_\(name)_API_KEY"
+    }
+
+    /// Every environment variable a provider's API key is read from, in order.
+    ///
+    /// The `SPEECHKIT_` variable always comes first. Fish Audio also answers to
+    /// `FISH_API_KEY`, the name its own SDKs and SpeechKit's live tests use.
+    public static func environmentVariableNames(for provider: CLIProvider) -> [String] {
+        var names = [environmentVariableName(for: provider)]
+        if provider == .fishAudio {
+            names.append("FISH_API_KEY")
+        }
+        return names
+    }
+
+    /// Returns the first non-blank key a provider's variables hold, and the variable it came from.
+    ///
+    /// - Parameters:
+    ///   - provider: The provider whose variables are read.
+    ///   - environment: The environment to read.
+    public static func environmentKey(
+        for provider: CLIProvider,
+        in environment: [String: String]
+    ) -> (variable: String, key: String)? {
+        for variable in environmentVariableNames(for: provider) {
+            let value = environment[variable]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !value.isEmpty {
+                return (variable, value)
+            }
+        }
+        return nil
     }
 
     /// Returns the provider named by `SPEECHKIT_PROVIDER`, when it is set and valid.
@@ -69,8 +104,8 @@ public struct CredentialResolver: Sendable {
         if let key = nonEmpty(flagAPIKey) {
             return .apiKey(key)
         }
-        if let key = nonEmpty(environment[Self.environmentVariableName(for: provider)]) {
-            return .apiKey(key)
+        if let found = Self.environmentKey(for: provider, in: environment) {
+            return .apiKey(found.key)
         }
         if let key = nonEmpty(try keychain.apiKey(for: provider)) {
             return .apiKey(key)

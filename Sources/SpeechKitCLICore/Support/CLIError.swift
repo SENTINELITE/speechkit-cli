@@ -80,8 +80,8 @@ public enum CLIError: Error, LocalizedError, Sendable, Equatable {
         case .transcriptionFailed(let file, let reason):
             return "\(file.lastPathComponent): \(reason)"
         case .missingCredential(let provider):
-            let variable = CredentialResolver.environmentVariableName(for: provider)
-            return "No credential for \(provider.rawValue). Pass --api-key or set \(variable)."
+            let variables = CredentialResolver.environmentVariableNames(for: provider).joined(separator: " or ")
+            return "No credential for \(provider.rawValue). Pass --api-key or set \(variables)."
         case .noRunnableProviders(let providers):
             let names = providers.map(\.rawValue).sorted().joined(separator: ", ")
             let list = names.isEmpty ? "the providers named" : names

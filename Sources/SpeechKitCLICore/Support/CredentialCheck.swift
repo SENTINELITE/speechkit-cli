@@ -311,9 +311,8 @@ public struct CredentialCheck: Sendable {
     func credential(for provider: CLIProvider) -> (source: CredentialSource, key: String?, credential: SpeechCredential?) {
         guard provider.requiresCredential else { return (.notNeeded, nil, nil) }
 
-        let variable = CredentialResolver.environmentVariableName(for: provider)
-        if let key = Self.nonEmpty(environment[variable]) {
-            return (.environment, key, .apiKey(key))
+        if let found = CredentialResolver.environmentKey(for: provider, in: environment) {
+            return (.environment, found.key, .apiKey(found.key))
         }
         if let key = Self.nonEmpty(try? store?.read(for: provider) ?? nil) {
             return (.keychain, key, .apiKey(key))

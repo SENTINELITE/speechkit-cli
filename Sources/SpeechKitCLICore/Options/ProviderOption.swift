@@ -18,14 +18,29 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
     case meta
     /// Google Gemini.
     case gemini
+    /// Fish Audio. Also accepted as `fish`.
+    case fishAudio = "fish-audio"
     /// Apple's local Speech framework.
     case apple
     /// The on-device VOZ model.
     case voz
 
-    /// Creates a provider from a case-insensitive argument.
+    /// Short names accepted in place of a provider's raw value.
+    ///
+    /// Only the raw value is ever printed or stored, so an alias never shows
+    /// up in history, the keychain, or `--help`.
+    public static let aliases: [String: CLIProvider] = [
+        "fish": .fishAudio
+    ]
+
+    /// Creates a provider from a case-insensitive argument or alias.
     public init?(argument: String) {
-        self.init(rawValue: argument.lowercased())
+        let value = argument.lowercased()
+        if let provider = CLIProvider(rawValue: value) ?? Self.aliases[value] {
+            self = provider
+        } else {
+            return nil
+        }
     }
 
     /// The values accepted by `--provider`.
@@ -46,6 +61,7 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
         case .openai: return .openAI
         case .meta: return .meta
         case .gemini: return .gemini
+        case .fishAudio: return .fishAudio
         case .apple: return .apple
         case .voz: return nil
         }
@@ -72,6 +88,7 @@ public enum CLIProvider: String, CaseIterable, Sendable, ExpressibleByArgument, 
         case .openai: return "OpenAI"
         case .meta: return "Meta"
         case .gemini: return "Gemini"
+        case .fishAudio: return "Fish Audio"
         case .apple: return "Apple"
         case .voz: return "VOZ"
         }

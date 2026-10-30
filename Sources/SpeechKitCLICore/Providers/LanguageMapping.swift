@@ -58,6 +58,24 @@ public enum LanguageMapping {
             .filter { !$0.isEmpty }
     }
 
+    /// Returns the Fish Audio language hint for the first requested code.
+    ///
+    /// Fish Audio takes a lowercase two-letter ISO 639-1 hint, so a region
+    /// subtag is dropped: `en-US` sends `en`. The hint helps detection but does
+    /// not force the transcript language.
+    ///
+    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when the
+    ///   code has no two-letter base.
+    public static func fishAudio(_ codes: [String]) throws -> String? {
+        guard let code = codes.first?.trimmingCharacters(in: .whitespaces), !code.isEmpty else { return nil }
+        let base = baseCode(code)
+        let isTwoLetters = base.count == 2 && base.unicodeScalars.allSatisfy { ("a"..."z").contains($0) }
+        guard isTwoLetters else {
+            throw CLIError.invalidLanguage(provider: .fishAudio, code: code, valid: [])
+        }
+        return base
+    }
+
     /// Language names Meta accepts, keyed by the code callers are likely to pass.
     ///
     /// Meta biases transcription with names such as `Mandarin Chinese`, so the
@@ -167,7 +185,7 @@ public enum LanguageMapping {
             return metaLanguagesByCode.keys.sorted()
         case .elevenlabs, .voz:
             return []
-        case .openai, .gemini, .apple:
+        case .openai, .gemini, .fishAudio, .apple:
             return nil
         }
     }

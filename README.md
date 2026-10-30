@@ -2,8 +2,8 @@
 
 A macOS command-line tool that transcribes one or more audio files with any
 [SpeechKit](../SpeechKit) file provider — ElevenLabs, Aqua, Cohere, Grok,
-OpenAI, Meta, Gemini, Apple's on-device Speech framework, or the on-device VOZ
-model — and writes plain
+OpenAI, Meta, Gemini, Fish Audio, Apple's on-device Speech framework, or the
+on-device VOZ model — and writes plain
 text, JSON, SubRip, or WebVTT, with optional word-level timestamps and speaker
 labels. It is a thin front end over the SpeechKit package: every provider
 request goes through SpeechKit's detailed file-transcription calls, and the
@@ -52,7 +52,9 @@ Every provider except Apple needs an API key. The tool looks in three places,
 in this order, and stops at the first one that holds a non-empty value:
 
 1. `--api-key <key>` on the command line.
-2. The `SPEECHKIT_<PROVIDER>_API_KEY` environment variable.
+2. The `SPEECHKIT_<PROVIDER>_API_KEY` environment variable, with any hyphen
+   in the provider name written as an underscore. Fish Audio also reads
+   `FISH_API_KEY` when its `SPEECHKIT_` variable is unset.
 3. The macOS login keychain, under service `com.sentinelite.speechkit-cli`
    with the provider name as the account.
 
@@ -67,6 +69,7 @@ If none of the three yields a key, the run exits with code 3 before any upload.
 | `openai` | `SPEECHKIT_OPENAI_API_KEY` |
 | `meta` | `SPEECHKIT_META_API_KEY` |
 | `gemini` | `SPEECHKIT_GEMINI_API_KEY` |
+| `fish-audio` | `SPEECHKIT_FISH_AUDIO_API_KEY`, then `FISH_API_KEY` |
 | `apple` | none; runs on device |
 | `voz` | none; runs on device |
 
@@ -252,21 +255,21 @@ from a session started this way pipes as cleanly as any other.
 | Flag | Value | Default | Notes |
 | --- | --- | --- | --- |
 | `<files>` | one or more paths | — | Globs are expanded by the shell. A directory is rejected with a hint to use a glob. |
-| `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `apple`, `voz` | `SPEECHKIT_PROVIDER` | Case-insensitive. Required when the variable is unset. |
+| `-p`, `--provider` | `elevenlabs`, `aqua`, `cohere`, `grok`, `openai`, `meta`, `gemini`, `fish-audio`, `apple`, `voz` | `SPEECHKIT_PROVIDER` | Case-insensitive. `fish` is accepted for `fish-audio`. Required when the variable is unset. |
 | `-l`, `--language` | language code | provider default | Repeatable. Only OpenAI and Gemini use more than the first value. |
 | `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. Ignored by Apple and VOZ, which have none. |
 | `--api-key` | string | — | Overrides the environment and keychain for this run. |
 | `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple and VOZ. |
-| `--timeout` | seconds | 600 | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, Apple, and VOZ. |
+| `--timeout` | seconds | 600 (900 for Fish Audio) | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, Apple, and VOZ. |
 | `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
-| `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs. |
+| `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs, Grok, and Fish Audio. |
 | `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. On OpenAI it selects `whisper-1`, which OpenAI retires on February 26, 2027 but is still the only model that returns them. |
 | `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, Apple, and VOZ. On OpenAI it selects `gpt-4o-transcribe-diarize`, which OpenAI retires on February 26, 2027; the run prints a note. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
 | `-o`, `--output` | directory or file path | stdout | A directory (existing, or ending with `/`) takes any number of inputs and formats and is created if missing. A file path takes one input and one format. |
 | `--no-timestamps` | flag | off | Write `txt` as prose instead of one timestamped sentence per line. |
 | `--overwrite` | flag | off | Without it, an existing output is skipped with a warning and the run still exits 0. |
-| `--cues` | `segments`, `sentences`, `words` | `sentences` for VOZ, `segments` otherwise | `sentences` rebuilds the segments, in every format, as one per sentence from the word timings. `words` writes one cue per word in SRT and VTT. |
+| `--cues` | `segments`, `sentences`, `words` | `sentences` for VOZ and Fish Audio, `segments` otherwise | `sentences` rebuilds the segments, in every format, as one per sentence from the word timings. `words` writes one cue per word in SRT and VTT. |
 | `--max-cue-duration` | seconds | `7.0` | Cue builder limit. Must be greater than zero. |
 | `--max-cue-chars` | integer | `84` | Cue builder limit, two lines of 42. Must be greater than zero. |
 | `--no-download` | flag | off | Fail with exit 3 instead of downloading a missing on-device model. VOZ only. |
@@ -539,6 +542,7 @@ default model and where each credential was found.
 | `openai` | yes | yes | yes | ISO 639-1 | 25 MB | m4a, mp3, mp4, mpeg, mpga, wav, webm |
 | `meta` | no | yes | yes | language names | 32 MB | wav |
 | `gemini` | yes | yes | yes | BCP-47 | no byte limit (one hour per file) | aac, aif, aiff, flac, m4a, mp3, mpeg, mpga, ogg, opus, wav, webm |
+| `fish-audio` | yes | yes | yes | ISO 639-1 | no published byte limit (60 minutes per file) | aac, flac, m4a, mkv, mov, mp3, mp4, oga, ogg, opus, wav, webm |
 | `apple` | yes | yes | no | `Locale` identifier | none | any |
 | `voz` | yes | yes | no | none (on-device model) | none; nothing is uploaded | any |
 
@@ -549,9 +553,19 @@ words only, so its segments are built by the CLI: one per sentence by default,
 or with `--cues segments` by the cue builder, where `--max-cue-duration` and
 `--max-cue-chars` shape its subtitles.
 
+Fish Audio returns speaker turns and words. SpeechKit copies the punctuation
+from the turns onto the words and labels each word with its speaker, so Fish
+Audio also defaults to one segment per sentence. `--cues segments` keeps its
+speaker turns instead, which run as long as the speaker does. Every Fish Audio
+run asks for timestamps, because the turns are empty without them. With
+`--diarize` Fish Audio always labels speakers; without it, Fish Audio decides.
+Its labels `speaker:0`, `speaker:1` become `0`, `1` in JSON, and `A`, `B` in
+the other formats. AIFF and CAF, which Fish Audio rejects, fail before upload.
+
 Use `speechkit languages <provider>` for the accepted `--language` values.
 Grok, Aqua, Cohere, and Meta print a fixed list; OpenAI and Gemini accept any
-code, so they print a note instead; Apple prints the locales this machine's
+code, and Fish Audio any two-letter ISO 639-1 code, so they print a note
+instead; Apple prints the locales this machine's
 transcriber actually supports; ElevenLabs and VOZ say the flag is ignored.
 Region subtags such as `-US` are dropped before
 matching against a fixed list, so `pt-BR` and `pt` resolve the same way.
@@ -571,12 +585,13 @@ than one input file, the note is prefixed with the file it came from.
 | `openai` | `--prompt` under `gpt-4o-transcribe-diarize`, which takes none |
 | `meta` | `--prompt` |
 | `gemini` | `--prompt`; `--keyword` is dropped when combined with `--diarize` or `--words`, which Gemini rejects |
+| `fish-audio` | `--prompt`, `--keyword`; every `--language` after the first |
 | `apple` | `--model`, `--endpoint`, `--timeout`, `--prompt` |
 | `voz` | `--model`, `--endpoint`, `--language`, `--timeout`, `--prompt`, `--keyword` |
 
 Aqua, Cohere, and ElevenLabs also note that the transcript is a single untimed
-segment, and Grok, Gemini, and ElevenLabs note when the provider returned no
-word timings and the transcript collapsed to one untimed segment.
+segment, and Grok, Gemini, ElevenLabs, and Fish Audio note when the provider
+returned no word timings and the transcript collapsed to one untimed segment.
 
 ## VOZ on-device model
 
@@ -690,7 +705,8 @@ boundaries at the `--max-cue-chars` limit.
 
 `--cues sentences` replaces the segments with one per sentence, built from the
 word timings, so `json`, `srt`, and `vtt` all carry the same sentences. It is
-the default for VOZ, which returns words and no segments of its own. Plain text
+the default for VOZ, which returns words and no segments of its own, and for
+Fish Audio, whose punctuated words split its long speaker turns cleanly. Plain text
 uses the same rules whatever `--cues` says. A new sentence starts when:
 
 - the previous word ends in `.`, `?`, `!`, or `…`, unless it is a common
@@ -791,6 +807,9 @@ export SPEECHKIT_OPENAI_API_KEY=sk-…
 export SPEECHKIT_GROK_API_KEY=xai-…
 swift test
 ```
+
+The Fish Audio test also runs when only `FISH_API_KEY` is set, since that is
+where the tool reads its key from as well.
 
 The on-device Apple test needs no key, so it is gated on an explicit opt-in
 instead:

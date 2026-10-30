@@ -255,6 +255,7 @@ struct ProviderMappingTests {
         #expect(try await ProviderRegistry.makeRunner(for: .elevenlabs, context: context) is ElevenLabsRunner)
         #expect(try await ProviderRegistry.makeRunner(for: .aqua, context: context) is AquaRunner)
         #expect(try await ProviderRegistry.makeRunner(for: .cohere, context: context) is CohereRunner)
+        #expect(try await ProviderRegistry.makeRunner(for: .fishAudio, context: context) is FishAudioRunner)
     }
 
     @Test("The registry rejects a bad language before any upload")

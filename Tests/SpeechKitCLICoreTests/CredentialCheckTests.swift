@@ -95,7 +95,7 @@ struct CredentialCheckTests {
         let rows = check().rows(for: CLIProvider.allCases)
         #expect(CredentialCheck.exitCode(rows) == 3)
         #expect(CredentialCheck.summary(rows) == """
-        5 of 7 providers have no key: elevenlabs, aqua, cohere, meta, gemini. \
+        6 of 8 providers have no key: elevenlabs, aqua, cohere, meta, gemini, fish-audio. \
         Run 'speechkit keys set <provider>'.
         """)
     }
@@ -174,7 +174,7 @@ struct CredentialCheckTests {
         }
         #expect(await probed.providers == Set([.openai, .grok, .apple, .voz]))
         #expect(rows.filter { $0.status == .skipped }.map(\.provider)
-            == ["elevenlabs", "aqua", "cohere", "meta", "gemini"])
+            == ["elevenlabs", "aqua", "cohere", "meta", "gemini", "fish-audio"])
     }
 
     @Test("every provider is probed once, even above the concurrency cap")

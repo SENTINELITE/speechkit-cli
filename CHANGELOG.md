@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.11.0 — 2026-10-29
+
+Fish Audio is a new provider: `-p fish-audio`, or `-p fish` for short.
+
+- It transcribes with Transcribe 1 Pro (`transcribe-1-pro`, the only model)
+  through SpeechKit's Fish Audio client, and returns word timings, speaker
+  turns, the detected language, and the duration. Every run asks for
+  timestamps, because the speaker turns that become the segments are empty
+  without them.
+- Words carry punctuation and a speaker, so `--cues` defaults to `sentences`
+  for Fish Audio as it does for VOZ. `--cues segments` keeps Fish Audio's
+  speaker turns, which can run long. Speaker labels `speaker:0` become `0`,
+  as Grok's are, and formatters still print them as `A`, `B`.
+- `--diarize` asks for speaker labels outright. Without it, Fish Audio decides
+  for itself, its own default.
+- `--language` sends one two-letter ISO 639-1 hint; `en-US` sends `en`. The
+  hint helps detection but does not force the language. `--prompt` and
+  `--keyword` are dropped with a note.
+- The key comes from `--api-key`, `SPEECHKIT_FISH_AUDIO_API_KEY`,
+  `FISH_API_KEY`, or the keychain under `fish-audio`, in that order. `keys`,
+  `providers`, and `bench` all know it.
+- Fish Audio accepts aac, flac, m4a, mov, mp3, mp4, oga, ogg, opus, wav, and
+  webm. AIFF and CAF, which it rejects, fail before upload. Files over 60
+  minutes fail in SpeechKit before upload. `--timeout` defaults to 15 minutes
+  for Fish Audio, because it answers only once the whole file is done.
+- Environment variable names replace a hyphen in the provider name with an
+  underscore, so the name is one a shell can export.
+
 ## 0.10.2 — 2026-10-25
 
 - A pause no longer breaks a sentence when the next word starts in lowercase,

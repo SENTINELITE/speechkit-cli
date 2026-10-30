@@ -268,9 +268,9 @@ public struct KeysRunner: Sendable {
             throw CLIError.usage("The key is empty; nothing was stored.")
         }
         try store.save(trimmed, for: provider)
-        if environment[CredentialResolver.environmentVariableName(for: provider)] != nil {
+        if let found = CredentialResolver.environmentKey(for: provider, in: environment) {
             console.warning(
-                "\(CredentialResolver.environmentVariableName(for: provider)) is set and takes precedence over the keychain."
+                "\(found.variable) is set and takes precedence over the keychain."
             )
         }
         return "Stored a \(provider.rawValue) key (\(trimmed.redactedAPIKey))."
@@ -302,13 +302,10 @@ public struct KeysRunner: Sendable {
     public func list() throws -> String {
         let stored = Swift.Set(try store.list())
         let rows = CLIProvider.allCases.map { provider -> [String] in
-            let variable = CredentialResolver.environmentVariableName(for: provider)
             guard provider.requiresCredential else {
                 return [provider.rawValue, "n/a", "-"]
             }
-            let override = environment[variable]?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty == false ? variable : "-"
+            let override = CredentialResolver.environmentKey(for: provider, in: environment)?.variable ?? "-"
             return [provider.rawValue, stored.contains(provider) ? "yes" : "no", override]
         }
         return TextTable(headers: ["provider", "stored", "environment override"], rows: rows).render()

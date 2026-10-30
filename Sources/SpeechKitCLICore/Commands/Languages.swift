@@ -52,6 +52,13 @@ public struct LanguageReport: Sendable, Codable, Equatable {
                 note: "gemini accepts any BCP-47 code, so there is no fixed list. Repeat --language to send several.",
                 values: []
             )
+        case .fishAudio:
+            return LanguageReport(
+                provider: provider.rawValue,
+                style: style,
+                note: "fish-audio takes one two-letter ISO 639-1 hint such as en; a region subtag is dropped. The hint helps detection but does not force the language, and only the first --language is sent.",
+                values: []
+            )
         case .elevenlabs:
             return LanguageReport(
                 provider: provider.rawValue,

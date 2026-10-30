@@ -148,6 +148,23 @@ public struct ProviderCapabilities: Sendable, Equatable {
                     "aac", "aif", "aiff", "flac", "m4a", "mp3", "mpeg", "mpga", "ogg", "opus", "wav", "webm"
                 ]
             )
+        case .fishAudio:
+            // SpeechKit's Fish Audio client rejects only AIFF and CAF and caps
+            // duration at 60 minutes. It keeps no allow-list, so this one is
+            // Fish Audio's documented formats, which also turns AIFF and CAF
+            // away before upload. Fish limits upload size with a 413 but does
+            // not publish the number.
+            return ProviderCapabilities(
+                defaultFileModel: FishAudioFileTranscriptionModelID.transcribe1Pro.rawValue,
+                supportsWordTimestamps: true,
+                supportsSegments: true,
+                supportsDiarization: true,
+                languageStyle: .iso639,
+                maxFileBytes: nil,
+                acceptedExtensions: [
+                    "aac", "flac", "m4a", "mkv", "mov", "mp3", "mp4", "oga", "ogg", "opus", "wav", "webm"
+                ]
+            )
         case .apple:
             return ProviderCapabilities(
                 defaultFileModel: nil,

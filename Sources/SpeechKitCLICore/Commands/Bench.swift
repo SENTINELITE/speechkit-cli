@@ -152,7 +152,7 @@ public struct Bench: AsyncParsableCommand, Sendable {
         }
         for skipped in selection.skipped {
             console.warning(
-                "no credential for \(skipped.rawValue); skipping it. Set \(CredentialResolver.environmentVariableName(for: skipped)) or run 'speechkit keys set \(skipped.rawValue)'."
+                "no credential for \(skipped.rawValue); skipping it. Set \(CredentialResolver.environmentVariableNames(for: skipped).joined(separator: " or ")) or run 'speechkit keys set \(skipped.rawValue)'."
             )
         }
         guard !selection.providers.isEmpty else {

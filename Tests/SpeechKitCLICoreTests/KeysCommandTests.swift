@@ -69,6 +69,7 @@ struct KeysCommandTests {
         openai      no      SPEECHKIT_OPENAI_API_KEY
         meta        no      -
         gemini      no      -
+        fish-audio  no      -
         apple       n/a     -
         voz         n/a     -
 

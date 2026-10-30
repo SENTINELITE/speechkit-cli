@@ -27,6 +27,8 @@ public enum ProviderRegistry {
             runner = AppleRunner(context: context)
         case .gemini:
             runner = GeminiRunner(context: context)
+        case .fishAudio:
+            runner = FishAudioRunner(context: context)
         case .meta:
             runner = MetaRunner(context: context)
         case .elevenlabs:

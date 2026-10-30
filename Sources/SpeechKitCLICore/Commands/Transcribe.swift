@@ -25,7 +25,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     @OptionGroup public var outputOptions: OutputOptions
 
     /// How segments and subtitle cues are split. `nil` picks the provider's default.
-    @Option(name: .long, help: "Cue source: segments, sentences, or words. Defaults to sentences for VOZ and segments otherwise.")
+    @Option(name: .long, help: "Cue source: segments, sentences, or words. Defaults to sentences for VOZ and Fish Audio, and segments otherwise.")
     public var cues: CueMode?
 
     /// The longest subtitle cue, in seconds.
@@ -229,7 +229,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
     ///
     /// A subtitle format from one of these needs word timings, so `-f srt` has
     /// to ask for them even when `--words` was not passed. Meta returns turns
-    /// and Apple returns entries, so neither needs the request.
+    /// and Apple returns entries, so neither needs the request. Fish Audio
+    /// always asks for timestamps, because its speaker turns need them too.
     static let wordSegmentProviders: Set<CLIProvider> = [.grok, .gemini, .openai, .elevenlabs]
 
     /// Returns whether the run should ask the provider for word timings.
@@ -251,15 +252,21 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         return wordSegmentProviders.contains(provider)
     }
 
-    /// Returns the cue mode for a provider: `--cues` when passed, and otherwise
-    /// sentences for VOZ and segments for everyone else.
+    /// The providers whose cue mode defaults to sentences.
     ///
     /// VOZ returns words only, so its segments are built by the CLI either way,
-    /// and sentences read better than pause-sized fragments. The cloud
-    /// providers keep their segments, which some of them send themselves.
+    /// and sentences read better than pause-sized fragments. Fish Audio's
+    /// speaker turns run long, but SpeechKit punctuates its words, so sentences
+    /// split cleanly. The other cloud providers keep their segments, which some
+    /// of them send themselves.
+    static let sentenceCueProviders: Set<CLIProvider> = [.voz, .fishAudio]
+
+    /// Returns the cue mode for a provider: `--cues` when passed, and otherwise
+    /// sentences for VOZ and Fish Audio and segments for everyone else.
     func cueMode(for provider: CLIProvider?) -> CueMode {
         if let cues { return cues }
-        return provider == .voz ? .sentences : .segments
+        guard let provider else { return .segments }
+        return Self.sentenceCueProviders.contains(provider) ? .sentences : .segments
     }
 
     /// Rejects two inputs that would write over each other.
@@ -484,8 +491,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         let mode = cueMode(for: provider ?? self.provider)
         if mode == .sentences {
             guard document.words.contains(where: { $0.start != nil }) else {
-                // The VOZ default should never fail a run; only an explicit
-                // request that cannot be met is an error.
+                // The VOZ and Fish Audio default should never fail a run;
+                // only an explicit request that cannot be met is an error.
                 guard cues == .sentences else { return document }
                 throw CLIError.usage(
                     "--cues sentences needs word timings, and \(document.provider) returned none. Pass --words, or use --cues segments."
