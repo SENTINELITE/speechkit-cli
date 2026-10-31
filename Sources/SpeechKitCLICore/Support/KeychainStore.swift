@@ -41,7 +41,7 @@ extension KeychainStoring {
 /// Keys live as generic passwords under one service, with the provider raw
 /// value as the account, so `security find-generic-password -s
 /// com.sentinelite.speechkit-cli` lists everything the tool stored. Items are
-/// accessible after the first unlock and never migrate to another device.
+/// accessible only while unlocked and never migrate to another device.
 public struct KeychainStore: KeychainStoring {
     /// The keychain service every `speechkit` item is filed under.
     public static let defaultService = "com.sentinelite.speechkit-cli"
@@ -49,26 +49,49 @@ public struct KeychainStore: KeychainStoring {
     /// The service this store reads and writes.
     public let service: String
 
+    private let updateItem: @Sendable ([String: Any], [String: Any]) -> OSStatus
+    private let addItem: @Sendable ([String: Any]) -> OSStatus
+    private let deleteItem: @Sendable ([String: Any]) -> OSStatus
+
     /// Creates a store.
     ///
     /// - Parameter service: The keychain service. Tests that must exercise the
     ///   real keychain pass a throwaway value.
     public init(service: String = KeychainStore.defaultService) {
         self.service = service
+        updateItem = { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) }
+        addItem = { SecItemAdd($0 as CFDictionary, nil) }
+        deleteItem = { SecItemDelete($0 as CFDictionary) }
+    }
+
+    init(
+        service: String = KeychainStore.defaultService,
+        updateItem: @escaping @Sendable ([String: Any], [String: Any]) -> OSStatus,
+        addItem: @escaping @Sendable ([String: Any]) -> OSStatus,
+        deleteItem: @escaping @Sendable ([String: Any]) -> OSStatus
+    ) {
+        self.service = service
+        self.updateItem = updateItem
+        self.addItem = addItem
+        self.deleteItem = deleteItem
     }
 
     /// Stores an API key, replacing any existing entry for the provider.
     public func save(_ apiKey: String, for provider: CLIProvider) throws {
         let query = baseQuery(account: provider.rawValue)
-        SecItemDelete(query as CFDictionary)
-
-        var attributes = query
-        attributes[kSecValueData as String] = Data(apiKey.utf8)
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw CLIError.keychainFailure(Self.message(for: status, action: "store the key"))
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(apiKey.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrSynchronizable as String: false
+        ]
+        let updateStatus = updateItem(query, attributes)
+        if updateStatus == errSecItemNotFound {
+            let status = addItem(query.merging(attributes) { _, value in value })
+            guard status == errSecSuccess else {
+                throw CLIError.keychainFailure(Self.message(for: status, action: "store the key"))
+            }
+        } else if updateStatus != errSecSuccess {
+            throw CLIError.keychainFailure(Self.message(for: updateStatus, action: "update the key"))
         }
     }
 
@@ -90,7 +113,7 @@ public struct KeychainStore: KeychainStoring {
     /// Removes the stored API key for a provider.
     @discardableResult
     public func delete(for provider: CLIProvider) throws -> Bool {
-        let status = SecItemDelete(baseQuery(account: provider.rawValue) as CFDictionary)
+        let status = deleteItem(baseQuery(account: provider.rawValue))
         if status == errSecItemNotFound { return false }
         guard status == errSecSuccess else {
             throw CLIError.keychainFailure(Self.message(for: status, action: "delete the key"))
@@ -103,6 +126,7 @@ public struct KeychainStore: KeychainStoring {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
+            kSecAttrSynchronizable as String: false,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecReturnAttributes as String: true
         ]
@@ -123,7 +147,8 @@ public struct KeychainStore: KeychainStoring {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
+            kSecAttrSynchronizable as String: false
         ]
     }
 

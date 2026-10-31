@@ -136,13 +136,7 @@ final class VozModelSession {
 
     /// Returns the presentable text of a `VozError` or any other failure.
     nonisolated static func message(for error: Error) -> String {
-        if let voz = error as? VozError, let description = voz.errorDescription {
-            return description
-        }
-        if let localized = error as? LocalizedError, let description = localized.errorDescription {
-            return description
-        }
-        return error.localizedDescription
+        FailureMessage.message(for: error)
     }
 }
 

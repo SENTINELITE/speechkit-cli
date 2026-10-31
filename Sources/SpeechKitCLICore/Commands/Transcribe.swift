@@ -81,9 +81,8 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
         default:
             break
         }
-        if let endpoint = transcription.endpoint, URL(string: endpoint) == nil {
-            throw ValidationError("--endpoint is not a valid URL.")
-        }
+        if let endpoint = transcription.endpoint { _ = try EndpointValidation.url(endpoint, option: "--endpoint") }
+        if let endpoint = transcription.filesEndpoint { _ = try EndpointValidation.url(endpoint, option: "--files-endpoint") }
         if let timeout = transcription.timeout, timeout <= 0 {
             throw ValidationError("--timeout must be greater than zero.")
         }
@@ -137,6 +136,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             model: transcription.model,
             languages: transcription.language,
             endpoint: transcription.endpoint.flatMap(URL.init(string:)),
+            filesEndpoint: transcription.filesEndpoint.flatMap(URL.init(string:)),
             timeout: transcription.timeout,
             prompt: transcription.prompt,
             keywords: transcription.keyword,
@@ -373,7 +373,7 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             return FileOutcome(input: input, destinations: [], failure: error)
         } catch {
             await task.fail()
-            let failure = CLIError.transcriptionFailed(file: input, reason: error.localizedDescription)
+            let failure = CLIError.transcriptionFailed(file: input, reason: FailureMessage.message(for: error))
             await record(failure, file: input, provider: provider, started: started, recorder: recorder)
             return FileOutcome(input: input, destinations: [], failure: failure)
         }

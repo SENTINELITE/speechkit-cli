@@ -14,6 +14,7 @@ public enum ProviderRegistry {
     ///   ``CLIError/appleUnavailable`` on operating systems without Apple's
     ///   local speech analyzer.
     public static func makeRunner(for provider: CLIProvider, context: RunContext) async throws -> any ProviderRunner {
+        try EndpointValidation.validate(endpoint: context.endpoint, filesEndpoint: context.filesEndpoint, provider: provider)
         let runner: any ProviderRunner
         switch provider {
         case .grok:

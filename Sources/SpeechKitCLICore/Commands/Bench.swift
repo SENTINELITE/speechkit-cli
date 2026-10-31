@@ -535,11 +535,7 @@ public struct Bench: AsyncParsableCommand, Sendable {
 
     /// Returns the presentable text of any failure.
     static func message(for error: Error) -> String {
-        if let cli = error as? CLIError { return cli.localizedDescription }
-        if let localized = error as? LocalizedError, let description = localized.errorDescription {
-            return description
-        }
-        return error.localizedDescription
+        FailureMessage.message(for: error)
     }
 
     static func createDirectory(_ directory: URL) throws {

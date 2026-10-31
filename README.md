@@ -17,18 +17,21 @@ one cost and how close it came to a reference transcript.
 
 ## Requirements
 
+Version 0.12.0 requires SpeechKit 3.0. It remains bring-your-own-key: environment
+and Keychain credentials use SpeechKit's opaque `.apiKey` credential, not Relay.
+
 - macOS 15 or later to run the tool.
 - macOS 26 or later for `--provider apple`. On macOS 15 the local speech
   analyzer does not exist and `--provider apple` exits with code 3.
 - Xcode 26 or later (Swift 6.2 or later) to build.
-- A sibling SpeechKit checkout at `../SpeechKit`, and a sibling SpeechKit-Voz
-  checkout at `../SpeechKit-Voz`.
+- A sibling SpeechKit 3.0 checkout at `../SpeechKit`, and a compatible sibling
+  SpeechKit-Voz checkout at `../SpeechKit-Voz`.
 - About 467 MB of disk for `--provider voz`, downloaded on first use.
 
 ## Build and install
 
 ```sh
-swift build -c release
+SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1 swift build -c release
 cp .build/release/speechkit ~/.local/bin/speechkit     # or /usr/local/bin
 ```
 
@@ -91,6 +94,16 @@ speechkit keys list                  # default subcommand; also plain `speechkit
 the variable wins over the keychain at transcription time. `apple` and `voz`
 are rejected by `set`, `get`, and `delete` with "apple needs no key" and
 "voz needs no key".
+
+New and replaced Keychain entries use `WhenUnlockedThisDeviceOnly` and are
+explicitly non-synchronizable. Save updates an existing entry without deleting
+it first, and every save and delete status is checked. Re-save older entries
+with `keys set` to apply the unlocked-only policy.
+
+Provider failures print SpeechKit 3.0's safe failure categories and HTTP status
+codes, not raw response bodies, transport descriptions, or credentials. The same
+messages go to benchmark reports, live key checks, and usage history. Unknown
+failures use a generic connection failure rather than echoing their details.
 
 Run `speechkit providers` to see, per provider, what it supports and whether a
 credential was found on this machine right now (`env`, `keychain`, `none`, or
@@ -259,7 +272,8 @@ from a session started this way pipes as cleanly as any other.
 | `-l`, `--language` | language code | provider default | Repeatable. Only OpenAI and Gemini use more than the first value. |
 | `-m`, `--model` | provider model ID | provider default | Validated against the provider's model list. Ignored by Apple and VOZ, which have none. |
 | `--api-key` | string | — | Overrides the environment and keychain for this run. |
-| `--endpoint` | URL | provider default | Override the file endpoint, for proxies. Ignored by Apple and VOZ. |
+| `--endpoint` | URL | provider default | Override the file endpoint. HTTPS required, except HTTP on loopback. Ignored by Apple and VOZ. |
+| `--files-endpoint` | URL | provider default | Gemini Files API route. Required with a custom Gemini `--endpoint`, on the same origin. Other providers reject it. |
 | `--timeout` | seconds | 600 (900 for Fish Audio) | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, Apple, and VOZ. |
 | `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
 | `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs, Grok, and Fish Audio. |
@@ -291,6 +305,26 @@ with code 1 before a byte leaves the machine.
 ElevenLabs the upload asks for word timestamps whether or not `--words` was
 passed. On OpenAI that means the run uses `whisper-1` unless `--model` says
 otherwise, because OpenAI returns word timestamps from no other model.
+
+### Custom endpoints
+
+Custom endpoints cannot contain user info, fragments, or credential query
+parameters. SpeechKit 3.0 refuses redirects, including same-origin redirects;
+pass the final destination URL instead. File transcription uses HTTP endpoints,
+not WebSocket endpoints.
+
+Gemini custom routes must be complete. `--endpoint` must end in `/interactions`,
+and `--files-endpoint` must end in `/files`, with the same scheme, host, and port:
+
+```sh
+speechkit talk.wav -p gemini \
+  --endpoint https://proxy.example.com/v1beta/interactions \
+  --files-endpoint https://proxy.example.com/upload/v1beta/files
+```
+
+Both routes are explicit so uploads and follow-up requests cannot silently fall
+back to Google. These overrides still use your API key; they do not enable
+Relay or bearer-token authentication.
 
 ## Benchmarking providers
 
@@ -416,7 +450,7 @@ call a mistake.
 
 ## `speechkit bench` flags
 
-The flag set is small on purpose. `--model`, `--api-key`, `--endpoint`,
+The flag set is small on purpose. `--model`, `--api-key`, `--endpoint`, `--files-endpoint`,
 `--timeout`, `--prompt`, and the `--max-cue-*` limits are not accepted: a value
 that can only suit one of the providers being compared makes two columns
 incomparable, and credentials that belong to one provider cannot be passed on a
@@ -628,11 +662,11 @@ batch, however many `--jobs` are in flight, and it is released when the last
 file finishes. Inference itself is serialized inside SpeechKit-Voz, so `--jobs`
 overlaps file reading rather than running several Core ML sessions at once.
 
-SpeechKit-Voz declares SpeechKit by URL while this package declares it by path.
-SwiftPM lets the root package's path dependency win, so `swift build` resolves
-against the sibling `../SpeechKit` checkout and prints a "conflicting identity
-for speechkit" warning while doing it. The warning is expected; the build uses
-the local checkout.
+SpeechKit-Voz can declare SpeechKit by URL while this package declares it by
+path. Set `SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1` for builds and tests so both
+packages explicitly use the sibling SpeechKit 3.0 checkout. Voz's remote
+dependency range must also include 3.0 when used outside local mode. Older
+`from: "2.0.0"` declarations exclude 3.0.
 
 The model files live in the VOZ managed cache. SpeechKit-Voz resolves that
 location internally and publishes no accessor for it, so `voz status` names the
@@ -788,8 +822,8 @@ autoload -Uz compinit && compinit
 ## Tests
 
 ```sh
-swift build -Xswiftc -warnings-as-errors
-swift test
+SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1 swift build -Xswiftc -warnings-as-errors
+SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1 swift test
 ```
 
 The unit suite is hermetic: no network, no keychain writes outside a temporary

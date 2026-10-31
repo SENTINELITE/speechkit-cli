@@ -35,7 +35,7 @@ public struct SpeechKitCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "speechkit",
         abstract: "Transcribe audio files with any SpeechKit provider.",
-        version: "0.11.0",
+        version: "0.12.0",
         subcommands: [
             Transcribe.self, Bench.self, Stats.self, History.self,
             Providers.self, Languages.self, Keys.self, Voz.self, Interactive.self
@@ -88,7 +88,7 @@ public struct SpeechKitCommand: AsyncParsableCommand {
             Console.writeStandardError("speechkit: \(error.localizedDescription)\n")
             Foundation.exit(error.exitCode)
         } catch {
-            let message = fullMessage(for: error)
+            let message = FailureMessage.providerMessage(for: error) ?? fullMessage(for: error)
             let code = exitCode(for: error)
             if code == .success {
                 if !message.isEmpty { print(message) }

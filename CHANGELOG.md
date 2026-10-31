@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.0 - 2026-10-30
+
+- Requires SpeechKit 3.0. Environment and Keychain keys remain opaque `.apiKey`
+  credentials. The CLI does not use Relay or token resolvers.
+- Transcription, benchmark, live-key-check, and VOZ failures use safe categories
+  and HTTP status codes. Unknown errors and raw VOZ details are not echoed to
+  stderr, reports, or usage history.
+- Keychain saves use `WhenUnlockedThisDeviceOnly`, disable synchronization, and
+  update existing entries without first deleting them. Every save and delete
+  status is checked, including failed updates and inserts.
+- File endpoints require HTTPS except for HTTP loopback development. Credentials
+  in URLs are rejected without echoing the URL. SpeechKit refuses redirects.
+- Custom Gemini file routes require both `--endpoint` ending in `/interactions`
+  and the new `--files-endpoint` ending in `/files` on the same origin.
+- Builds and tests can set `SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1` to use the
+  sibling SpeechKit 3.0 checkout from Voz as well as the CLI.
+
 ## 0.11.0 — 2026-10-29
 
 Fish Audio is a new provider: `-p fish-audio`, or `-p fish` for short.

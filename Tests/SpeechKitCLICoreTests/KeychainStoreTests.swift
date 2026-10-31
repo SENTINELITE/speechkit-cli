@@ -1,9 +1,72 @@
 import Foundation
+import Security
 import Testing
 @testable import SpeechKitCLICore
 
 @Suite("Keychain store")
 struct KeychainStoreTests {
+    @Test("Saves are unlocked-only, device-only, and never synchronized", arguments: [false, true])
+    func saveProtection(_ exists: Bool) throws {
+        let store = KeychainStore(
+            updateItem: { query, attributes in
+                #expect(query[kSecAttrSynchronizable as String] as? Bool == false)
+                #expect(attributes[kSecAttrAccessible as String] as? String == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
+                #expect(attributes[kSecAttrSynchronizable as String] as? Bool == false)
+                #expect(attributes[kSecValueData as String] as? Data == Data("dummy".utf8))
+                return exists ? errSecSuccess : errSecItemNotFound
+            },
+            addItem: { attributes in
+                #expect(!exists)
+                #expect(attributes[kSecAttrAccessible as String] as? String == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
+                #expect(attributes[kSecAttrSynchronizable as String] as? Bool == false)
+                #expect(attributes[kSecAttrService as String] as? String == KeychainStore.defaultService)
+                return errSecSuccess
+            },
+            deleteItem: { _ in Issue.record("Saving must not delete the old key"); return errSecSuccess }
+        )
+        try store.save("dummy", for: .openai)
+    }
+
+    @Test("Failed updates preserve the old item and report the status")
+    func failedUpdate() {
+        let store = KeychainStore(
+            updateItem: { _, _ in errSecInteractionNotAllowed },
+            addItem: { _ in Issue.record("A failed update must not add an item"); return errSecSuccess },
+            deleteItem: { _ in Issue.record("A failed update must not delete an item"); return errSecSuccess }
+        )
+        let error = #expect(throws: CLIError.self) { try store.save("dummy", for: .openai) }
+        #expect(error?.exitCode == 3)
+        #expect(error?.localizedDescription.contains("dummy") == false)
+    }
+
+    @Test("Failed inserts report the status", arguments: [errSecAuthFailed, errSecDuplicateItem])
+    func failedInsert(_ status: OSStatus) {
+        let store = KeychainStore(
+            updateItem: { _, _ in errSecItemNotFound },
+            addItem: { _ in status },
+            deleteItem: { _ in Issue.record("Saving must not delete an item"); return errSecSuccess }
+        )
+        let error = #expect(throws: CLIError.self) { try store.save("dummy", for: .openai) }
+        #expect(error?.exitCode == 3)
+    }
+
+    @Test("Deletes check every status", arguments: [errSecSuccess, errSecItemNotFound, errSecAuthFailed])
+    func deleteStatuses(_ status: OSStatus) throws {
+        let store = KeychainStore(
+            updateItem: { _, _ in Issue.record("Delete must not update"); return errSecSuccess },
+            addItem: { _ in Issue.record("Delete must not add"); return errSecSuccess },
+            deleteItem: { query in
+                #expect(query[kSecAttrSynchronizable as String] as? Bool == false)
+                return status
+            }
+        )
+        if status == errSecAuthFailed {
+            #expect(throws: CLIError.self) { try store.delete(for: .openai) }
+        } else {
+            #expect(try store.delete(for: .openai) == (status == errSecSuccess))
+        }
+    }
+
     @Test("Saving, reading, and deleting round-trips through the store")
     func roundTrip() throws {
         let store = InMemoryKeychainStore()

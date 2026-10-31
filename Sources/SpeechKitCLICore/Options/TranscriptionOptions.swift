@@ -19,6 +19,9 @@ public struct TranscriptionOptions: ParsableArguments, Sendable {
     @Option(name: .long, help: "Override the provider file endpoint.")
     public var endpoint: String?
 
+    @Option(name: .long, help: "Gemini Files API endpoint. Required with a custom Gemini --endpoint, on the same origin.")
+    public var filesEndpoint: String?
+
     /// A request timeout, in seconds.
     @Option(name: .long, help: "Request timeout in seconds.")
     public var timeout: Double?

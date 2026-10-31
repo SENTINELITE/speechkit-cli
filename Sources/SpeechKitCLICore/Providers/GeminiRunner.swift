@@ -44,7 +44,8 @@ public struct GeminiRunner: ProviderRunner {
             diarize: context.wantsDiarization,
             timestampGranularities: context.wantsWords ? [.word] : [],
             timeoutInterval: context.timeout ?? 10 * 60,
-            fileEndpoint: context.endpoint
+            fileEndpoint: context.endpoint,
+            filesEndpoint: context.filesEndpoint
         )
         let options = GeminiFileTranscriptionOptions(
             modelID: modelID,

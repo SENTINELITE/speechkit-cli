@@ -11,6 +11,7 @@ public struct RunContext: Sendable {
     public var languages: [String]
     /// An endpoint override for proxies.
     public var endpoint: URL?
+    public var filesEndpoint: URL?
     /// A request timeout override, in seconds.
     public var timeout: TimeInterval?
     /// A prompt for providers that accept one.
@@ -41,6 +42,7 @@ public struct RunContext: Sendable {
         model: String? = nil,
         languages: [String] = [],
         endpoint: URL? = nil,
+        filesEndpoint: URL? = nil,
         timeout: TimeInterval? = nil,
         prompt: String? = nil,
         keywords: [String] = [],
@@ -56,6 +58,7 @@ public struct RunContext: Sendable {
         self.model = model
         self.languages = languages
         self.endpoint = endpoint
+        self.filesEndpoint = filesEndpoint
         self.timeout = timeout
         self.prompt = prompt
         self.keywords = keywords

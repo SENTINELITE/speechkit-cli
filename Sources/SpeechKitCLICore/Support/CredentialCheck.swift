@@ -293,10 +293,7 @@ public struct CredentialCheck: Sendable {
 
     /// Returns a message as one line, with every run of whitespace collapsed.
     ///
-    /// Provider errors often carry a pretty-printed JSON body, whose first line
-    /// is just an opening brace, so the message is flattened rather than cut at
-    /// the first newline. The table truncates the result; `--json` keeps it
-    /// whole.
+    /// The table truncates the safe failure message; `--json` keeps it whole.
     static func singleLine(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -367,13 +364,13 @@ extension CredentialCheck {
                 return ProbeResult(
                     status: .failed,
                     seconds: elapsed,
-                    detail: singleLine(error.localizedDescription)
+                    detail: singleLine(FailureMessage.message(for: error))
                 )
             } catch {
                 return ProbeResult(
                     status: .failed,
                     seconds: Date().timeIntervalSince(started),
-                    detail: singleLine(error.localizedDescription)
+                    detail: singleLine(FailureMessage.message(for: error))
                 )
             }
         }
