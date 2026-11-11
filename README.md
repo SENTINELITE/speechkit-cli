@@ -274,11 +274,16 @@ from a session started this way pipes as cleanly as any other.
 | `--api-key` | string | — | Overrides the environment and keychain for this run. |
 | `--endpoint` | URL | provider default | Override the file endpoint. HTTPS required, except HTTP on loopback. Ignored by Apple and VOZ. |
 | `--files-endpoint` | URL | provider default | Gemini Files API route. Required with a custom Gemini `--endpoint`, on the same origin. Other providers reject it. |
-| `--timeout` | seconds | 600 (900 for Fish Audio) | Request timeout. Dropped by Aqua, Cohere, ElevenLabs, Apple, and VOZ. |
+| `--timeout` | seconds | 600 (900 for ElevenLabs and Fish Audio) | Request timeout. Dropped by Aqua, Cohere, Apple, and VOZ. |
 | `--prompt` | string | — | OpenAI only. Dropped elsewhere. |
-| `--keyword` | string | — | Repeatable vocabulary hint. OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, ElevenLabs, Grok, and Fish Audio. |
+| `--keyword` | string | — | Repeatable vocabulary hint. ElevenLabs keyterms, OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Dropped by Aqua, Cohere, Grok, and Fish Audio. |
 | `--words` | flag | off | Request word-level timestamps. Usage error on Aqua, Cohere, and Meta. On OpenAI it selects `whisper-1`, which OpenAI retires on February 26, 2027 but is still the only model that returns them. |
-| `--diarize` | flag | off | Speaker labels. Usage error on ElevenLabs, Aqua, Cohere, Apple, and VOZ. On OpenAI it selects `gpt-4o-transcribe-diarize`, which OpenAI retires on February 26, 2027; the run prints a note. |
+| `--diarize` | flag | off | Speaker labels. Usage error on Aqua, Cohere, Apple, and VOZ. On OpenAI it selects `gpt-4o-transcribe-diarize`, which OpenAI retires on February 26, 2027; the run prints a note. |
+| `--speakers` | integer | model maximum | ElevenLabs only: maximum number of speakers, 1-32. Requires `--diarize`. |
+| `--numbers` | `digits`, `words` | model choice | ElevenLabs `scribe_v3` only: how numbers are written. |
+| `--secondary-language` | language code | — | ElevenLabs `scribe_v3` only: another language expected in the audio. Repeatable. |
+| `--tag-audio-events` | flag | off | ElevenLabs only: tag sounds such as laughter. They come back as words with no timestamps. |
+| `--no-verbatim` | flag | off | ElevenLabs only: remove filler words and false starts. |
 | `-f`, `--format` | `txt`, `json`, `srt`, `vtt` | `txt` | Repeatable: `-f srt -f vtt` writes both. |
 | `-o`, `--output` | directory or file path | stdout | A directory (existing, or ending with `/`) takes any number of inputs and formats and is created if missing. A file path takes one input and one format. |
 | `--no-timestamps` | flag | off | Write `txt` as prose instead of one timestamped sentence per line. |
@@ -569,7 +574,7 @@ default model and where each credential was found.
 
 | Provider | Words | Segments | Diarize | Language input | Max upload | Extensions |
 | --- | --- | --- | --- | --- | --- | --- |
-| `elevenlabs` | yes | yes | no | none (auto-detected) | 3 GB | any |
+| `elevenlabs` | yes | yes | yes | ISO 639-1 or 639-3 | 5 GB | any |
 | `aqua` | no | no | no | fixed provider list | 25 MB | flac, m4a, mp3, mp4, mpeg, mpga, ogg, wav, webm |
 | `cohere` | no | no | no | fixed provider list | 25 MB | flac, mp3, mpeg, mpga, ogg, wav |
 | `grok` | yes | yes | yes | fixed provider list | 500 MB | aac, flac, m4a, mkv, mp3, mp4, ogg, opus, wav |
@@ -596,11 +601,20 @@ run asks for timestamps, because the turns are empty without them. With
 Its labels `speaker:0`, `speaker:1` become `0`, `1` in JSON, and `A`, `B` in
 the other formats. AIFF and CAF, which Fish Audio rejects, fail before upload.
 
+ElevenLabs defaults to Scribe v3 and labels each word with its speaker under
+`--diarize`; the `speaker_0`, `speaker_1` labels reach the same formats Fish
+Audio's do. `--speakers` caps how many speakers v3 looks for. On `scribe_v3`,
+`--numbers` picks digits or words and `--secondary-language` names other
+languages the audio may switch to; both are usage errors on the other models.
+`--keyword` sends keyterms, `--tag-audio-events` marks sounds such as laughter,
+and `--no-verbatim` drops filler words.
+
 Use `speechkit languages <provider>` for the accepted `--language` values.
 Grok, Aqua, Cohere, and Meta print a fixed list; OpenAI and Gemini accept any
 code, and Fish Audio any two-letter ISO 639-1 code, so they print a note
 instead; Apple prints the locales this machine's
-transcriber actually supports; ElevenLabs and VOZ say the flag is ignored.
+transcriber actually supports; ElevenLabs takes any ISO 639-1 or 639-3 code
+but sends only the first, and VOZ says the flag is ignored.
 Region subtags such as `-US` are dropped before
 matching against a fixed list, so `pt-BR` and `pt` resolve the same way.
 
@@ -612,7 +626,7 @@ than one input file, the note is prefixed with the file it came from.
 
 | Provider | Dropped |
 | --- | --- |
-| `elevenlabs` | `--language` (Scribe detects the language itself), `--timeout`, `--prompt`, `--keyword` |
+| `elevenlabs` | `--prompt`; every `--language` after the first |
 | `aqua` | `--timeout`, `--prompt`, `--keyword` |
 | `cohere` | `--timeout`, `--prompt`, `--keyword` |
 | `grok` | `--prompt`, `--keyword` |

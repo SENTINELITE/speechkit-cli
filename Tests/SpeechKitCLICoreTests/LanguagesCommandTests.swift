@@ -30,10 +30,10 @@ struct LanguagesCommandTests {
         #expect(LanguageReport.make(for: .gemini).values.isEmpty)
     }
 
-    @Test("ElevenLabs says the language is detected for you")
+    @Test("ElevenLabs accepts any ISO code but has no fixed list")
     func elevenLabs() {
         let report = LanguageReport.make(for: .elevenlabs)
-        #expect(report.note.contains("detects the language itself"))
+        #expect(report.note.contains("ISO 639-1 or 639-3"))
         #expect(report.values.isEmpty)
     }
 

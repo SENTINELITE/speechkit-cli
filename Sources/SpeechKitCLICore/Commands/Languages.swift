@@ -63,7 +63,7 @@ public struct LanguageReport: Sendable, Codable, Equatable {
             return LanguageReport(
                 provider: provider.rawValue,
                 style: style,
-                note: "elevenlabs Scribe detects the language itself; --language is ignored with a warning.",
+                note: "elevenlabs accepts any ISO 639-1 or 639-3 code, so there is no fixed list. Only the first --language is sent; --secondary-language adds more on scribe_v3.",
                 values: []
             )
         case .voz:

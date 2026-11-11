@@ -16,7 +16,7 @@ struct ProvidersCommandTests {
         let table = ProviderReport.table(reports)
         #expect(table == """
         PROVIDER    DEFAULT MODEL              WORDS  SEGMENTS  DIARIZE  LANGUAGE      MAX SIZE  MACOS  CREDENTIAL  EXTENSIONS
-        elevenlabs  scribe_v2                  yes    yes       no       none          3 GB      15     none        any
+        elevenlabs  scribe_v3                  yes    yes       yes      iso639        5 GB      15     none        any
         aqua        avalon-v1.5                no     no        no       providerEnum  25 MB     15     none        flac,m4a,mp3,mp4,mpeg,mpga,ogg,wav,webm
         cohere      cohere-transcribe-03-2026  no     no        no       providerEnum  25 MB     15     none        flac,mp3,mpeg,mpga,ogg,wav
         grok        grok-stt                   yes    yes       yes      providerEnum  500 MB    15     keychain    aac,flac,m4a,mkv,mp3,mp4,ogg,opus,wav
@@ -56,7 +56,7 @@ struct ProvidersCommandTests {
         #expect(first["provider"] as? String == "elevenlabs")
         #expect(first["segments"] as? Bool == true)
         #expect(first["credentialSource"] as? String == "none")
-        #expect(first["maxFileBytes"] as? Int == 3 * 1024 * 1024 * 1024)
+        #expect(first["maxFileBytes"] as? Int == 5 * 1024 * 1024 * 1024)
         #expect(first["acceptedExtensions"] == nil)
     }
 

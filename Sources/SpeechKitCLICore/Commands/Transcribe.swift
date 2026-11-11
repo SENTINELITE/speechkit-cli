@@ -150,6 +150,13 @@ public struct Transcribe: AsyncParsableCommand, Sendable {
             maxCueDuration: maxCueDuration,
             maxCueChars: maxCueChars,
             cueMode: cueMode(for: provider),
+            elevenLabs: ElevenLabsRequestOptions(
+                speakerCount: transcription.speakers,
+                numbersFormat: transcription.numbers?.elevenLabsFormat,
+                secondaryLanguages: transcription.secondaryLanguage,
+                tagAudioEvents: transcription.tagAudioEvents,
+                noVerbatim: transcription.noVerbatim
+            ),
             allowsModelDownload: !transcription.noDownload,
             console: console
         )

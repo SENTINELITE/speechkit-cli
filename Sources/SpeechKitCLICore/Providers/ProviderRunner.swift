@@ -28,6 +28,13 @@ public struct RunContext: Sendable {
     public var maxCueChars: Int
     /// Whether subtitle cues come from segments or from single words.
     public var cueMode: CueMode
+    /// The ElevenLabs-only request options.
+    ///
+    /// `--speakers`, `--numbers`, `--secondary-language`, `--tag-audio-events`
+    /// and `--no-verbatim` have no meaning anywhere else, so
+    /// ``ProviderRegistry/makeRunner(for:context:)`` refuses them for every
+    /// other provider rather than dropping them silently.
+    public var elevenLabs: ElevenLabsRequestOptions
     /// Whether a provider may fetch an on-device model it does not have yet.
     ///
     /// `--no-download` sets this to `false` so a script never triggers a
@@ -51,6 +58,7 @@ public struct RunContext: Sendable {
         maxCueDuration: Double = 7,
         maxCueChars: Int = 84,
         cueMode: CueMode = .segments,
+        elevenLabs: ElevenLabsRequestOptions = ElevenLabsRequestOptions(),
         allowsModelDownload: Bool = true,
         console: Console = Console()
     ) {
@@ -67,6 +75,7 @@ public struct RunContext: Sendable {
         self.maxCueDuration = maxCueDuration
         self.maxCueChars = maxCueChars
         self.cueMode = cueMode
+        self.elevenLabs = elevenLabs
         self.allowsModelDownload = allowsModelDownload
         self.console = console
     }

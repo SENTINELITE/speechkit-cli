@@ -67,7 +67,7 @@ struct RunnerSupportTests {
                 allowed: ElevenLabsRunner.fileModelIDs
             )
         }
-        #expect(error?.localizedDescription.contains("scribe_v1") == true)
+        #expect(error?.localizedDescription.contains("scribe_v3") == true)
     }
 
     @Test("Only the options that were passed produce a note")

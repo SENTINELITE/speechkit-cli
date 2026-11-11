@@ -15,6 +15,9 @@ public enum ProviderRegistry {
     ///   local speech analyzer.
     public static func makeRunner(for provider: CLIProvider, context: RunContext) async throws -> any ProviderRunner {
         try EndpointValidation.validate(endpoint: context.endpoint, filesEndpoint: context.filesEndpoint, provider: provider)
+        if provider != .elevenlabs, let flag = context.elevenLabs.firstSetFlag {
+            throw CLIError.usage("\(flag) is only supported by elevenlabs.")
+        }
         let runner: any ProviderRunner
         switch provider {
         case .grok:

@@ -48,6 +48,24 @@ public enum LanguageMapping {
         return Locale(identifier: code)
     }
 
+    /// Returns the ElevenLabs language code for the first requested code.
+    ///
+    /// ElevenLabs takes one ISO 639-1 or 639-3 code, so a region subtag is
+    /// dropped: `en-US` sends `en`. Omitted means the language is detected
+    /// automatically.
+    ///
+    /// - Throws: ``CLIError/invalidLanguage(provider:code:valid:)`` when the
+    ///   code has no two- or three-letter base.
+    public static func elevenLabs(_ codes: [String]) throws -> String? {
+        guard let code = codes.first?.trimmingCharacters(in: .whitespaces), !code.isEmpty else { return nil }
+        let base = baseCode(code)
+        let valid = (2...3).contains(base.count) && base.unicodeScalars.allSatisfy { ("a"..."z").contains($0) }
+        guard valid else {
+            throw CLIError.invalidLanguage(provider: .elevenlabs, code: code, valid: [])
+        }
+        return base
+    }
+
     /// Returns the Gemini language codes for the requested codes.
     ///
     /// Gemini takes BCP-47 tags, so codes pass through with the region subtag
@@ -183,9 +201,9 @@ public enum LanguageMapping {
             return CohereLanguage.allCases.map(\.rawValue).sorted()
         case .meta:
             return metaLanguagesByCode.keys.sorted()
-        case .elevenlabs, .voz:
+        case .voz:
             return []
-        case .openai, .gemini, .fishAudio, .apple:
+        case .elevenlabs, .openai, .gemini, .fishAudio, .apple:
             return nil
         }
     }

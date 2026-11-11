@@ -200,18 +200,18 @@ struct ProviderMappingTests {
         #expect(document.warnings.isEmpty)
     }
 
-    @Test("ElevenLabs notes that --language is ignored")
+    @Test("ElevenLabs notes when --language narrowed to one code")
     func elevenLabsLanguageWarning() throws {
         let response = try Fixture.decode(ElevenLabsFileTranscriptionResponse.self, from: "elevenlabs-response")
         let document = ElevenLabsRunner.map(
             response,
             file: file,
             modelID: .scribeV2,
-            warnings: ["ElevenLabs Scribe detects the language itself; --language was ignored."]
+            warnings: ["ElevenLabs takes one language code; only en was sent."]
         )
         #expect(document.model == "scribe_v2")
         #expect(document.warnings.count == 1)
-        #expect(document.warnings[0].contains("--language"))
+        #expect(document.warnings[0].contains("--language") || document.warnings[0].contains("language"))
     }
 
     @Test("Aqua returns one untimed segment and no words")

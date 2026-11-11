@@ -1,5 +1,22 @@
 import ArgumentParser
 import Foundation
+import SpeechKit
+
+/// How ElevenLabs Scribe v3 writes numbers, for `--numbers`.
+public enum NumbersFormat: String, ExpressibleByArgument, CaseIterable, Sendable {
+    /// Numbers are written as digits, such as `42`.
+    case digits
+    /// Numbers are written as words, such as `forty-two`.
+    case words
+
+    /// The matching SpeechKit value.
+    public var elevenLabsFormat: ElevenLabsNumbersFormat {
+        switch self {
+        case .digits: return .digits
+        case .words: return .words
+        }
+    }
+}
 
 /// How a transcript is produced.
 public struct TranscriptionOptions: ParsableArguments, Sendable {
@@ -31,7 +48,7 @@ public struct TranscriptionOptions: ParsableArguments, Sendable {
     public var prompt: String?
 
     /// Vocabulary hints. Repeat the flag for several.
-    @Option(name: .long, help: "Vocabulary hint. Repeatable.")
+    @Option(name: .long, help: "Vocabulary hint. ElevenLabs keyterms, OpenAI keywords, Meta keywords, Gemini custom vocabulary, Apple contextual strings. Repeatable.")
     public var keyword: [String] = []
 
     /// Requests word-level timestamps.
@@ -45,6 +62,26 @@ public struct TranscriptionOptions: ParsableArguments, Sendable {
     /// Requests speaker labels.
     @Flag(name: .long, help: "Request speaker labels.")
     public var diarize: Bool = false
+
+    /// The maximum number of speakers ElevenLabs should label.
+    @Option(name: .long, help: "ElevenLabs: maximum number of speakers, 1-32. Requires --diarize.")
+    public var speakers: Int?
+
+    /// How ElevenLabs Scribe v3 writes numbers.
+    @Option(name: .long, help: "ElevenLabs Scribe v3: write numbers as digits or words.")
+    public var numbers: NumbersFormat?
+
+    /// Another language expected in the audio. Repeat the flag for several.
+    @Option(name: .long, help: "ElevenLabs Scribe v3: another language expected in the audio. Repeatable.")
+    public var secondaryLanguage: [String] = []
+
+    /// Requests audio event tags such as laughter.
+    @Flag(name: .long, help: "ElevenLabs: tag audio events such as laughter.")
+    public var tagAudioEvents: Bool = false
+
+    /// Removes filler words and false starts.
+    @Flag(name: .long, help: "ElevenLabs: remove filler words and false starts.")
+    public var noVerbatim: Bool = false
 
     /// Creates empty transcription options.
     public init() {}

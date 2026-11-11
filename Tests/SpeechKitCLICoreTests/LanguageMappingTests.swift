@@ -130,9 +130,13 @@ struct LanguageMappingTests {
         }
     }
 
-    @Test("ElevenLabs takes no language at all, so it lists no values")
-    func elevenLabs() {
-        #expect(LanguageMapping.validValues(for: .elevenlabs) == [])
+    @Test("ElevenLabs takes any ISO 639-1 or 639-3 code, so it lists no values")
+    func elevenLabs() throws {
+        #expect(try LanguageMapping.elevenLabs(["en-US"]) == "en")
+        #expect(try LanguageMapping.elevenLabs(["eng"]) == "eng")
+        #expect(try LanguageMapping.elevenLabs([]) == nil)
+        #expect(LanguageMapping.validValues(for: .elevenlabs) == nil)
+        #expect(throws: CLIError.self) { _ = try LanguageMapping.elevenLabs(["english"]) }
     }
 
     @Test("Valid values are listed for enumerated providers and nil for free-form ones")
@@ -141,7 +145,7 @@ struct LanguageMappingTests {
         #expect(LanguageMapping.validValues(for: .aqua) == AquaLanguage.allCases.map(\.rawValue).sorted())
         #expect(LanguageMapping.validValues(for: .cohere)?.count == CohereLanguage.allCases.count)
         #expect(LanguageMapping.validValues(for: .meta)?.contains("cmn") == true)
-        #expect(LanguageMapping.validValues(for: .elevenlabs) == [])
+        #expect(LanguageMapping.validValues(for: .elevenlabs) == nil)
         #expect(LanguageMapping.validValues(for: .openai) == nil)
         #expect(LanguageMapping.validValues(for: .gemini) == nil)
         #expect(LanguageMapping.validValues(for: .apple) == nil)

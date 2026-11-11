@@ -4,6 +4,14 @@
 
 - Requires SpeechKit 3.0. Environment and Keychain keys remain opaque `.apiKey`
   credentials. The CLI does not use Relay or token resolvers.
+- ElevenLabs defaults to Scribe v3 (`scribe_v3`) and also accepts `scribe_v2`
+  and `scribe_v2_medical`. `scribe_v1` is removed: ElevenLabs retired it on
+  July 9, 2026. The upload limit is now 5 GB, matching ElevenLabs.
+- ElevenLabs gains `--diarize`, `--speakers`, `--numbers`, `--secondary-language`,
+  `--tag-audio-events`, and `--no-verbatim`. `--language` is sent as the language
+  code instead of being ignored, `--keyword` maps to keyterms, and `--timeout`
+  applies. Word speaker labels reach the speaker-aware formats. The ElevenLabs
+  flags are usage errors on every other provider.
 - Transcription, benchmark, live-key-check, and VOZ failures use safe categories
   and HTTP status codes. Unknown errors and raw VOZ details are not echoed to
   stderr, reports, or usage history.
