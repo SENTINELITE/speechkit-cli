@@ -4,16 +4,18 @@ Publish SpeechKit-Voz `1.1.0` first, then SpeechKit `3.0.0`. The demo
 resolves the VOZ tag, and the standalone CLI resolves both tags. The CLI repository
 and its GitHub Release assets must be readable by Homebrew users.
 
-1. On an Apple Silicon Mac, run `swift test -Xswiftc -warnings-as-errors`
-   in a checkout with no sibling-package override.
-2. Run `Scripts/build-release.sh`. It writes
-   `dist/speechkit-1.0.0-macos-arm64.tar.gz`, its SHA-256 file, and a matching
-   `dist/speechkit.rb`. The archive contains the executable and license
-   notices. VOZ downloads its model on first use.
-3. Attach the archive and checksum to the GitHub Release for the bare
-   `1.0.0` tag in `SENTINELITE/speechkit-cli`.
-4. Place the generated formula in `Formula/speechkit.rb` in
-   `SENTINELITE/homebrew-tap`. Verify the first install from the published URL.
+Push `main` and a bare version tag such as `1.0.0`. The
+[Apple Silicon release workflow](.github/workflows/release.yml) tests the
+tagged source, builds the archive, and publishes it, its SHA-256 file, and
+the matching `speechkit.rb` as GitHub Release assets. The workflow checks
+that the binary reports the tag version before publishing.
+
+For a local build on Apple Silicon, run `Scripts/build-release.sh`.
+It writes the archive, checksum, and formula to `dist/`.
+
+For Homebrew, take `speechkit.rb` from the published release so its
+checksum matches the hosted archive. Place it at `Formula/speechkit.rb`
+in `SENTINELITE/homebrew-tap` for the install command below.
 
 ```sh
 brew trust --formula sentinellite/tap/speechkit

@@ -1,0 +1,69 @@
+name: Apple Silicon release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
+        with:
+          xcode-version: "26.2"
+
+      - name: Verify platform and test
+        run: |
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(uname -m)" = arm64
+          swift test --force-resolved-versions -Xswiftc -warnings-as-errors
+
+      - name: Build and verify the download
+        run: |
+          Scripts/build-release.sh
+          archive="speechkit-$TAG-macos-arm64.tar.gz"
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          (
+            cd dist
+            shasum -a 256 -c "$archive.sha256"
+            tar -xzf "$archive" -C "$scratch"
+            ruby -c speechkit.rb
+          )
+          test "$(lipo -archs "$scratch/speechkit")" = arm64
+          test "$("$scratch/speechkit" --version)" = "$TAG"
+          test -s "$scratch/share/doc/speechkit/NOTICE.md"
+
+      - name: Publish the GitHub Release and downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="speechkit-$TAG-macos-arm64.tar.gz"
+          notes="$RUNNER_TEMP/speechkit-release.md"
+          printf '%s\n' \
+            "Download \`$archive\` for Apple Silicon Macs running macOS 15 or later." \
+            "" \
+            "See the [installation instructions](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/README.md#install-from-github)." \
+            "The SHA-256 file and matching Homebrew formula are included below." > "$notes"
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "speechkit $TAG" --notes-file "$notes" \
+            "dist/$archive" "dist/$archive.sha256" dist/speechkit.rb

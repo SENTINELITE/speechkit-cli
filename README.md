@@ -12,7 +12,24 @@ SubRip, or WebVTT, with optional word timings and speaker labels. Run
 - About 337 MB of disk for the VOZ v0.5.0 model, downloaded on demand.
 - Xcode 26 or later (Swift 6.2 or later) for source builds.
 
-## Build and install
+## Install from GitHub
+
+Download the archive ending in `-macos-arm64.tar.gz` and its checksum from
+[GitHub Releases](https://github.com/SENTINELITE/speechkit-cli/releases/latest).
+In the download directory, verify, unpack, and install the executable:
+
+```sh
+shasum -a 256 -c speechkit-1.0.0-macos-arm64.tar.gz.sha256
+tar -xzf speechkit-1.0.0-macos-arm64.tar.gz
+mkdir -p ~/.local/bin
+install -m 0755 speechkit ~/.local/bin/speechkit
+~/.local/bin/speechkit --version
+```
+
+Use the filenames for the version you downloaded. Add `~/.local/bin` to
+`PATH` to run `speechkit` by name. VOZ downloads its model on first use.
+
+## Build from source
 
 Clone this repository and run:
 
