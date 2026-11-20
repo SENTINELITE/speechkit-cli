@@ -25,7 +25,7 @@ struct ProvidersCommandTests {
         gemini      gemini-3.5-transcribe      yes    yes       yes      bcp47         -         15     none        aac,aif,aiff,flac,m4a,mp3,mpeg,mpga,ogg,opus,wav,webm
         fish-audio  transcribe-1-pro           yes    yes       yes      iso639        -         15     none        aac,flac,m4a,mkv,mov,mp3,mp4,oga,ogg,opus,wav,webm
         apple       -                          yes    yes       no       locale        -         26     not needed  any
-        voz         voz v0.1.0                 yes    yes       no       none          -         15     not needed  any
+        voz         voz v0.5.0                 yes    yes       no       none          -         15     not needed  any
 
         """)
     }

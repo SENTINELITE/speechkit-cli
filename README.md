@@ -1,57 +1,36 @@
 # speechkit
 
-A macOS command-line tool that transcribes one or more audio files with any
-[SpeechKit](../SpeechKit) file provider — ElevenLabs, Aqua, Cohere, Grok,
-OpenAI, Meta, Gemini, Fish Audio, Apple's on-device Speech framework, or the
-on-device VOZ model — and writes plain
-text, JSON, SubRip, or WebVTT, with optional word-level timestamps and speaker
-labels. It is a thin front end over the SpeechKit package: every provider
-request goes through SpeechKit's detailed file-transcription calls, and the
-responses are mapped into one neutral `TranscriptDocument` that the formatters
-render. The package is a path dependency (`.package(path: "../SpeechKit")`), so
-this checkout and the SpeechKit checkout must sit side by side in the same
-parent directory and the tool always builds against whatever is on disk. VOZ
-comes from a second path dependency, `../SpeechKit-Voz`. `speechkit bench` runs
-a folder of recordings through several providers at once and tabulates what each
-one cost and how close it came to a reference transcript.
+A macOS command-line tool for transcribing audio files with
+[SpeechKit](https://github.com/SENTINELITE/SpeechKit). Export plain text, JSON,
+SubRip, or WebVTT, with optional word timings and speaker labels. Run
+`speechkit bench` to compare providers on the same recordings.
 
 ## Requirements
 
-Version 0.12.0 requires SpeechKit 3.0. It remains bring-your-own-key: environment
-and Keychain credentials use SpeechKit's opaque `.apiKey` credential, not Relay.
-
-- macOS 15 or later to run the tool.
-- macOS 26 or later for `--provider apple`. On macOS 15 the local speech
-  analyzer does not exist and `--provider apple` exits with code 3.
-- Xcode 26 or later (Swift 6.2 or later) to build.
-- A sibling SpeechKit 3.0 checkout at `../SpeechKit`, and a compatible sibling
-  SpeechKit-Voz checkout at `../SpeechKit-Voz`.
-- About 467 MB of disk for `--provider voz`, downloaded on first use.
+- Apple Silicon Mac with macOS 15 or later.
+- macOS 26 or later to use Apple's on-device Speech framework.
+- About 337 MB of disk for the VOZ v0.5.0 model, downloaded on demand.
+- Xcode 26 or later (Swift 6.2 or later) for source builds.
 
 ## Build and install
 
-```sh
-SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1 swift build -c release
-cp .build/release/speechkit ~/.local/bin/speechkit     # or /usr/local/bin
-```
-
-Or use the install script, which builds for the native architecture and copies
-the binary into `$SPEECHKIT_INSTALL_DIR`, defaulting to `~/.local/bin`:
+Clone this repository and run:
 
 ```sh
 Scripts/install.sh
-SPEECHKIT_INSTALL_DIR=/usr/local/bin Scripts/install.sh
 ```
 
-For a universal (arm64 + x86_64) binary in `dist/speechkit`:
+The default install path is `~/.local/bin/speechkit`. Set
+`SPEECHKIT_INSTALL_DIR` to choose another path. Source builds resolve
+SpeechKit 3.x and SpeechKit-Voz 1.x from GitHub. For development across
+sibling checkouts, set `SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1` for SwiftPM
+commands and build scripts.
 
-```sh
-Scripts/build-release.sh
-```
+See [release packaging](RELEASING.md) for the Homebrew tap and archive.
 
 ## Credentials
 
-Every provider except Apple needs an API key. The tool looks in three places,
+Cloud providers need an API key. Apple and VOZ run on device. The tool looks in three places,
 in this order, and stops at the first one that holds a non-empty value:
 
 1. `--api-key <key>` on the command line.
@@ -644,9 +623,9 @@ returned no word timings and the transcript collapsed to one untimed segment.
 ## VOZ on-device model
 
 `--provider voz` transcribes with the VOZ speech model through the
-[SpeechKit-Voz](../SpeechKit-Voz) package. No audio leaves the machine and no
+[SpeechKit-Voz](https://github.com/SENTINELITE/SpeechKit-Voz) package. No audio leaves the machine and no
 API key is involved, but the model is not bundled: the first run downloads
-roughly 467 MB, and the first load after that pays a one-time Neural Engine
+about 337 MB, and the first load after that pays a one-time Neural Engine
 specialization that can take several minutes.
 
 Do the download once, deliberately, before you need it:
@@ -676,12 +655,6 @@ batch, however many `--jobs` are in flight, and it is released when the last
 file finishes. Inference itself is serialized inside SpeechKit-Voz, so `--jobs`
 overlaps file reading rather than running several Core ML sessions at once.
 
-SpeechKit-Voz can declare SpeechKit by URL while this package declares it by
-path. Set `SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT=1` for builds and tests so both
-packages explicitly use the sibling SpeechKit 3.0 checkout. Voz's remote
-dependency range must also include 3.0 when used outside local mode. Older
-`from: "2.0.0"` declarations exclude 3.0.
-
 The model files live in the VOZ managed cache. SpeechKit-Voz resolves that
 location internally and publishes no accessor for it, so `voz status` names the
 cache rather than printing a path. The cache can be purged by the operating
@@ -700,7 +673,7 @@ device-count, redistribution, and model-training obligations to anything that
 ships them, and the runtime may send the license's minimal device-counting
 telemetry (the license says that telemetry excludes inputs, outputs, and user
 content). Audio never leaves the machine either way. Read
-[SpeechKit-Voz's NOTICE.md](../SpeechKit-Voz/NOTICE.md) and the full terms at
+[SpeechKit-Voz's NOTICE.md](https://github.com/SENTINELITE/SpeechKit-Voz/blob/main/NOTICE.md) and the full terms at
 <https://license.desertant.com/1.0> before redistributing this tool.
 
 ## Output formats
@@ -875,10 +848,8 @@ speechkit voz prepare
 SPEECHKIT_VOZ_INTEGRATION=1 swift test
 ```
 
-## Status
+## License
 
-This is a local, unpublished tool. There is no GitHub remote, no CI, no
-Homebrew tap, and no tagged release; the SpeechKit dependency is a path
-dependency rather than a version, so both checkouts move together. Build it
-from source with the steps above. Realtime microphone transcription, directory
-watching, and a public release are follow-ups, not part of this version.
+SpeechKit CLI is distributed under [Apache 2.0](LICENSE). The VOZ runtime
+and model are covered by the Desert Ant Labs Source-Available License.
+See [third-party notices](NOTICE.md).

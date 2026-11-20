@@ -1,0 +1,51 @@
+{
+  "originHash" : "ef74c089ac083ffe6a3fdf9170d14992e44fbbe35e340cba448396eddbadc354",
+  "pins" : [
+    {
+      "identity" : "desert-ant-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Desert-Ant-Labs/desert-ant-core.git",
+      "state" : {
+        "revision" : "baf4e6e3b4655c8e54aa8d5a25215b5f35f899a7",
+        "version" : "4.3.0"
+      }
+    },
+    {
+      "identity" : "speechkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SENTINELITE/SpeechKit.git",
+      "state" : {
+        "revision" : "5aa29c23ee65aeef9e48474cc80595b0f99e1a1d",
+        "version" : "3.0.0"
+      }
+    },
+    {
+      "identity" : "speechkit-voz",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SENTINELITE/SpeechKit-Voz.git",
+      "state" : {
+        "revision" : "fa32a72257234c7ef905495bebc8e797bc60dd71",
+        "version" : "1.1.0"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -66,7 +66,7 @@ struct VozRunnerTests {
     @Test("The capability row describes an on-device model with no credential")
     func capabilities() {
         let capabilities = ProviderCapabilities.capabilities(for: .voz)
-        #expect(capabilities.defaultFileModel == "voz v0.1.0")
+        #expect(capabilities.defaultFileModel == "voz v0.5.0")
         #expect(capabilities.supportsWordTimestamps)
         #expect(capabilities.supportsSegments)
         #expect(capabilities.supportsDiarization == false)
@@ -88,7 +88,7 @@ struct VozRunnerTests {
         #expect(reports.map(\.provider).contains("voz"))
         let table = ProviderReport.table(reports)
         let row = table.split(separator: "\n").first { $0.hasPrefix("voz") }
-        #expect(row?.contains("voz v0.1.0") == true)
+        #expect(row?.contains("voz v0.5.0") == true)
         #expect(row?.contains("not needed") == true)
     }
 
@@ -106,7 +106,7 @@ struct VozRunnerTests {
     @Test("voz status reports the cache without an in-memory state")
     func statusReport() throws {
         let missing = VozStatusReport.make(cached: false)
-        #expect(missing.model == "voz v0.1.0")
+        #expect(missing.model == "voz v0.5.0")
         #expect(missing.cached == false)
         #expect(missing.cacheLocation == "VOZ managed cache")
         #expect(missing.render().contains("cached: no"))
@@ -122,7 +122,7 @@ struct VozRunnerTests {
             with: try encoder.encode(present)
         ) as? [String: Any]
         #expect(object?["cached"] as? Bool == true)
-        #expect(object?["model"] as? String == "voz v0.1.0")
+        #expect(object?["model"] as? String == "voz v0.5.0")
         #expect(object?["state"] == nil)
     }
 
@@ -156,10 +156,10 @@ struct VozRunnerTests {
 
     @Test("A refused download and a failed preparation both exit with code 3")
     func errorCodes() {
-        let refused = CLIError.modelDownloadRefused(provider: .voz, size: "about 467 MB")
+        let refused = CLIError.modelDownloadRefused(provider: .voz, size: "about 337 MB")
         #expect(refused.exitCode == 3)
         #expect(refused.localizedDescription.contains("speechkit voz prepare"))
-        #expect(refused.localizedDescription.contains("about 467 MB"))
+        #expect(refused.localizedDescription.contains("about 337 MB"))
 
         let notReady = CLIError.modelNotReady(provider: .voz, reason: "the network went away")
         #expect(notReady.exitCode == 3)

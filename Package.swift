@@ -1,6 +1,17 @@
 // swift-tools-version: 6.2
 
+import Foundation
 import PackageDescription
+
+// The public build resolves versioned packages. Developers working across the
+// three repositories can use sibling checkouts with this environment variable.
+let useLocalPackages = ProcessInfo.processInfo.environment["SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT"] != nil
+let speechKit: Package.Dependency = useLocalPackages
+    ? .package(path: "../SpeechKit")
+    : .package(url: "https://github.com/SENTINELITE/SpeechKit.git", from: "3.0.0")
+let speechKitVoz: Package.Dependency = useLocalPackages
+    ? .package(path: "../SpeechKit-Voz")
+    : .package(url: "https://github.com/SENTINELITE/SpeechKit-Voz.git", from: "1.1.0")
 
 let package = Package(
     name: "speechkit-cli",
@@ -18,8 +29,8 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../SpeechKit"),
-        .package(path: "../SpeechKit-Voz"),
+        speechKit,
+        speechKitVoz,
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [

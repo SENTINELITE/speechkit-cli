@@ -14,20 +14,13 @@ import SpeechKitVoz
 @MainActor
 final class VozModelSession {
     /// The pinned model version, shown as the provider's default model.
-    ///
-    /// SpeechKit-Voz pins the `desert-ant-labs/voz` `v0.1.0` model and exposes
-    /// no identifier for it, so the CLI names it here.
-    nonisolated static let modelVersion = "voz v0.1.0"
+    nonisolated static let modelVersion = "voz \(VozModelDetails.revision)"
 
     /// The approximate first-run download, as it appears in messages.
-    nonisolated static let downloadSize = "about 467 MB"
+    nonisolated static let downloadSize = "about \(downloadMegabytes) MB"
 
-    /// The approximate first-run download in megabytes.
-    ///
-    /// SpeechKit-Voz reports download progress as a fraction and publishes no
-    /// byte count, so the megabytes beside the bar are this pinned total scaled
-    /// by that fraction. It is the same number ``downloadSize`` names.
-    nonisolated static let downloadMegabytes = 467
+    /// The approximate first-run download in decimal megabytes.
+    nonisolated static let downloadMegabytes = VozModelDetails.downloadMegabytes
 
     /// What `voz status` calls the cache when no directory was configured.
     ///

@@ -8,6 +8,11 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
+    echo "error: speechkit 1.0 requires an Apple Silicon Mac and a native shell" >&2
+    exit 1
+fi
+
 install_dir="${SPEECHKIT_INSTALL_DIR:-$HOME/.local/bin}"
 
 binary="$(swift build -c release --show-bin-path)/speechkit"

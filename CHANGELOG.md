@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 - 2026-11-20
+
+- First public release for Apple Silicon Macs. A standalone checkout builds
+  against tagged versions of SpeechKit 3 and SpeechKit-Voz 1.1.
+- Downloads the VOZ v0.5.0 model on demand and reports the revision from the
+  adapter. File transcription, benchmarking and subtitle export are unchanged.
+- Adds an Apple Silicon release archive and a Homebrew formula generator.
+
 ## 0.12.0 - 2026-10-30
 
 - Requires SpeechKit 3.0. Environment and Keychain keys remain opaque `.apiKey`

@@ -52,6 +52,7 @@ public struct Voz: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "voz",
         abstract: "Inspect and prepare the on-device VOZ model.",
+        discussion: "Powered by Desert Ant Labs (https://desertant.com).",
         subcommands: [Status.self, Prepare.self],
         defaultSubcommand: Status.self
     )
