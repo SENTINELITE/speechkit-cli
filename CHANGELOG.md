@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2026-11-20
+
+- Give the executable target a distinct module name so SwiftPM can link it
+  beside the SpeechKit library on case-insensitive filesystems. The installed
+  command is still `speechkit`.
+
 ## 1.0.1 - 2026-11-20
 
 - Build against SpeechKit 3.0.1 for Swift 6.2 compatibility.

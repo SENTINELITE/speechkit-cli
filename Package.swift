@@ -21,7 +21,7 @@ let package = Package(
     products: [
         .executable(
             name: "speechkit",
-            targets: ["speechkit"]
+            targets: ["SpeechKitExecutable"]
         ),
         .library(
             name: "SpeechKitCLICore",
@@ -43,8 +43,9 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "speechkit",
-            dependencies: ["SpeechKitCLICore"]
+            name: "SpeechKitExecutable",
+            dependencies: ["SpeechKitCLICore"],
+            path: "Sources/speechkit"
         ),
         .testTarget(
             name: "SpeechKitCLICoreTests",

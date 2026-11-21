@@ -32,8 +32,8 @@ Download the archive ending in `-macos-arm64.tar.gz` and its checksum from
 In the download directory, verify, unpack, and install the executable:
 
 ```sh
-shasum -a 256 -c speechkit-1.0.1-macos-arm64.tar.gz.sha256
-tar -xzf speechkit-1.0.1-macos-arm64.tar.gz
+shasum -a 256 -c speechkit-1.0.2-macos-arm64.tar.gz.sha256
+tar -xzf speechkit-1.0.2-macos-arm64.tar.gz
 mkdir -p ~/.local/bin
 install -m 0755 speechkit ~/.local/bin/speechkit
 ~/.local/bin/speechkit --version
