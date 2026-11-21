@@ -1,5 +1,5 @@
 {
-  "originHash" : "ef74c089ac083ffe6a3fdf9170d14992e44fbbe35e340cba448396eddbadc354",
+  "originHash" : "aa447dd3e1152b0a00a3fb0edd254e42c4056b8f33eefb050357ea3c5eb4264d",
   "pins" : [
     {
       "identity" : "desert-ant-core",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SENTINELITE/SpeechKit.git",
       "state" : {
-        "revision" : "5aa29c23ee65aeef9e48474cc80595b0f99e1a1d",
-        "version" : "3.0.0"
+        "revision" : "ec2a29704ef79cd196ee0904b4d3a437f5dc1dab",
+        "version" : "3.0.1"
       }
     },
     {

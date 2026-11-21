@@ -8,7 +8,7 @@ import PackageDescription
 let useLocalPackages = ProcessInfo.processInfo.environment["SPEECHKIT_VOZ_USE_LOCAL_SPEECHKIT"] != nil
 let speechKit: Package.Dependency = useLocalPackages
     ? .package(path: "../SpeechKit")
-    : .package(url: "https://github.com/SENTINELITE/SpeechKit.git", from: "3.0.0")
+    : .package(url: "https://github.com/SENTINELITE/SpeechKit.git", from: "3.0.1")
 let speechKitVoz: Package.Dependency = useLocalPackages
     ? .package(path: "../SpeechKit-Voz")
     : .package(url: "https://github.com/SENTINELITE/SpeechKit-Voz.git", from: "1.1.0")

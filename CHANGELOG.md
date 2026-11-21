@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-11-20
+
+- Build against SpeechKit 3.0.1 for Swift 6.2 compatibility.
+- Publish the downloadable Apple Silicon archive, checksum, and Homebrew
+  formula from GitHub Actions.
+
 ## 1.0.0 - 2026-11-20
 
 - First public release for Apple Silicon Macs. A standalone checkout builds

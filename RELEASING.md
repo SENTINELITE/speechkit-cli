@@ -1,10 +1,10 @@
 # Release the CLI
 
-Publish SpeechKit-Voz `1.1.0` first, then SpeechKit `3.0.0`. The demo
+Publish SpeechKit-Voz `1.1.0` first, then SpeechKit `3.0.1`. The demo
 resolves the VOZ tag, and the standalone CLI resolves both tags. The CLI repository
 and its GitHub Release assets must be readable by Homebrew users.
 
-Push `main` and a bare version tag such as `1.0.0`. The
+Push `main` and a bare version tag such as `1.0.1`. The
 [Apple Silicon release workflow](.github/workflows/release.yml) tests the
 tagged source, builds the archive, and publishes it, its SHA-256 file, and
 the matching `speechkit.rb` as GitHub Release assets. The workflow checks
