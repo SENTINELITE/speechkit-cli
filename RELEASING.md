@@ -17,7 +17,7 @@ For Homebrew, download `speechkit.rb` from the published release so its
 checksum matches the hosted archive. Update `Formula/speechkit.rb` in
 this repository and push the formula to `main`. Verify the install with
 the commands in the [Homebrew section of the README](README.md#install-with-homebrew)
-followed by `brew test sentinellite/speechkit-cli/speechkit`.
+followed by `brew test sentinelite/speechkit-cli/speechkit`.
 
 The 1.0 archive requires Apple Silicon and macOS 15 or later. The separately
 named Apple Speech provider requires macOS 26 or later.

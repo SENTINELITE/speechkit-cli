@@ -17,13 +17,13 @@ SubRip, or WebVTT, with optional word timings and speaker labels. Run
 Tap this repository by its GitHub URL, then install `speechkit`:
 
 ```sh
-brew tap sentinellite/speechkit-cli https://github.com/SENTINELITE/speechkit-cli.git
-brew trust --formula sentinellite/speechkit-cli/speechkit
-brew install sentinellite/speechkit-cli/speechkit
+brew tap sentinelite/speechkit-cli https://github.com/SENTINELITE/speechkit-cli.git
+brew trust --formula sentinelite/speechkit-cli/speechkit
+brew install sentinelite/speechkit-cli/speechkit
 speechkit --version
 ```
 
-Updates are available through `brew upgrade sentinellite/speechkit-cli/speechkit`.
+Updates are available through `brew upgrade sentinelite/speechkit-cli/speechkit`.
 
 ## Install from GitHub
 
