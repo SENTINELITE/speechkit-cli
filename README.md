@@ -12,6 +12,19 @@ SubRip, or WebVTT, with optional word timings and speaker labels. Run
 - About 337 MB of disk for the VOZ v0.5.0 model, downloaded on demand.
 - Xcode 26 or later (Swift 6.2 or later) for source builds.
 
+## Install with Homebrew
+
+Tap this repository by its GitHub URL, then install `speechkit`:
+
+```sh
+brew tap sentinellite/speechkit-cli https://github.com/SENTINELITE/speechkit-cli.git
+brew trust --formula sentinellite/speechkit-cli/speechkit
+brew install sentinellite/speechkit-cli/speechkit
+speechkit --version
+```
+
+Updates are available through `brew upgrade sentinellite/speechkit-cli/speechkit`.
+
 ## Install from GitHub
 
 Download the archive ending in `-macos-arm64.tar.gz` and its checksum from
